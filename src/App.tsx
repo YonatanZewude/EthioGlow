@@ -1,17 +1,48 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, TouchEvent } from 'react'
 import {
-  SignIn,
   SignedIn,
   SignedOut,
   UserButton,
   useAuth,
+  useSignIn,
+  useSignUp,
   useUser,
 } from '@clerk/clerk-react'
 import { createSupabaseClient } from './lib/supabase'
 import type { Category, ContentItem, Profile } from './types'
 
 const SWIPE_THRESHOLD = 42
+
+const HOMEPAGE_TOPICS = ['Outdoor', 'Indoor', 'In nature', 'On the beach']
+
+const DEMO_SLIDES = [
+  {
+    id: 'demo-1',
+    title: 'Outdoor Portrait',
+    url: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=700&q=80',
+  },
+  {
+    id: 'demo-2',
+    title: 'Indoor Editorial',
+    url: 'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?auto=format&fit=crop&w=700&q=80',
+  },
+  {
+    id: 'demo-3',
+    title: 'In nature Light',
+    url: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=700&q=80',
+  },
+  {
+    id: 'demo-4',
+    title: 'On the beach Vibe',
+    url: 'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?auto=format&fit=crop&w=700&q=80',
+  },
+  {
+    id: 'demo-5',
+    title: 'Studio Motion',
+    url: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=700&q=80',
+  },
+]
 
 const FILTERS = [
   { id: 'all', label: 'Alla' },
@@ -26,6 +57,8 @@ const FILTERS = [
 function App() {
   const { userId, getToken, isLoaded } = useAuth()
   const { user } = useUser()
+  const { isLoaded: signInLoaded, signIn, setActive: setSignInActive } = useSignIn()
+  const { isLoaded: signUpLoaded, signUp, setActive: setSignUpActive } = useSignUp()
 
   const [supabaseToken, setSupabaseToken] = useState<string | undefined>()
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -36,6 +69,14 @@ function App() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
+  const [authMode, setAuthMode] = useState<'sign-in' | 'sign-up'>('sign-in')
+  const [authEmail, setAuthEmail] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
+  const [authBusy, setAuthBusy] = useState(false)
+  const [homeTopic, setHomeTopic] = useState('Outdoor')
+  const [homeSearch, setHomeSearch] = useState('')
+  const [homeSlideIndex, setHomeSlideIndex] = useState(0)
+  const [homeTouchStartX, setHomeTouchStartX] = useState<number | null>(null)
 
   const [uploadTitle, setUploadTitle] = useState('')
   const [uploadDescription, setUploadDescription] = useState('')
@@ -210,6 +251,45 @@ function App() {
     return lightboxImages[lightboxIndex] || null
   }, [lightboxImages, lightboxIndex])
 
+  const homepageSlides = useMemo(() => {
+    const uploaded = content
+      .filter((item) => item.type === 'image' && item.signedUrl)
+      .map((item) => ({
+        id: item.id,
+        title: item.title,
+        url: item.signedUrl as string,
+        category: item.categories?.[0]?.name || '',
+      }))
+
+    const pool = uploaded.length ? uploaded : DEMO_SLIDES
+    const query = homeSearch.trim().toLowerCase()
+    const topic = homeTopic.trim().toLowerCase()
+
+    const bySearch = query
+      ? pool.filter((item) => item.title.toLowerCase().includes(query))
+      : pool
+
+    const byTopic = bySearch.filter((item) => {
+      const category = 'category' in item ? String(item.category || '').toLowerCase() : ''
+      return (
+        item.title.toLowerCase().includes(topic) ||
+        category.includes(topic) ||
+        bySearch.length <= 5
+      )
+    })
+
+    return byTopic.length ? byTopic : bySearch
+  }, [content, homeSearch, homeTopic])
+
+  const homepageFrame = useMemo(() => {
+    if (!homepageSlides.length) return []
+    const count = Math.min(5, homepageSlides.length)
+    return Array.from({ length: count }, (_, offset) => {
+      const index = (homeSlideIndex + offset) % homepageSlides.length
+      return homepageSlides[index]
+    })
+  }, [homeSlideIndex, homepageSlides])
+
   useEffect(() => {
     if (!isLoaded) return
 
@@ -267,6 +347,27 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [lightboxImages])
 
+  useEffect(() => {
+    if (!homepageSlides.length) return
+
+    const timer = window.setInterval(() => {
+      setHomeSlideIndex((prev) => (prev + 1) % homepageSlides.length)
+    }, 4200)
+
+    return () => window.clearInterval(timer)
+  }, [homepageSlides])
+
+  useEffect(() => {
+    if (!homepageSlides.length) {
+      setHomeSlideIndex(0)
+      return
+    }
+
+    if (homeSlideIndex > homepageSlides.length - 1) {
+      setHomeSlideIndex(0)
+    }
+  }, [homeSlideIndex, homepageSlides])
+
   const openLightbox = (images: ContentItem[], index: number) => {
     setLightboxImages(images)
     setLightboxIndex(index)
@@ -301,6 +402,116 @@ function App() {
     }
 
     setTouchStartX(null)
+  }
+
+  const showPrevHomepageSlide = () => {
+    setHomeSlideIndex((prev) =>
+      homepageSlides.length ? (prev - 1 + homepageSlides.length) % homepageSlides.length : 0,
+    )
+  }
+
+  const showNextHomepageSlide = () => {
+    setHomeSlideIndex((prev) =>
+      homepageSlides.length ? (prev + 1) % homepageSlides.length : 0,
+    )
+  }
+
+  const handleHomepageTouchStart = (event: TouchEvent<HTMLDivElement>) => {
+    setHomeTouchStartX(event.changedTouches[0]?.clientX ?? null)
+  }
+
+  const handleHomepageTouchEnd = (event: TouchEvent<HTMLDivElement>) => {
+    if (homeTouchStartX === null) return
+
+    const touchEndX = event.changedTouches[0]?.clientX ?? homeTouchStartX
+    const delta = touchEndX - homeTouchStartX
+
+    if (Math.abs(delta) > SWIPE_THRESHOLD) {
+      if (delta < 0) showNextHomepageSlide()
+      if (delta > 0) showPrevHomepageSlide()
+    }
+
+    setHomeTouchStartX(null)
+  }
+
+  const handleAuthSubmit = async (event: FormEvent) => {
+    event.preventDefault()
+    setStatus(null)
+    setAuthBusy(true)
+
+    try {
+      if (authMode === 'sign-in') {
+        if (!signInLoaded || !signIn || !setSignInActive) {
+          setStatus('Sign-in ar inte laddad annu. Forsok igen.')
+          setAuthBusy(false)
+          return
+        }
+
+        const signInAttempt = await signIn.create({
+          identifier: authEmail,
+          password: authPassword,
+        })
+
+        if (signInAttempt.status === 'complete' && signInAttempt.createdSessionId) {
+          await setSignInActive({ session: signInAttempt.createdSessionId })
+        } else {
+          setStatus('Kunde inte logga in. Kontrollera dina uppgifter.')
+        }
+      } else {
+        if (!signUpLoaded || !signUp || !setSignUpActive) {
+          setStatus('Registrering ar inte laddad annu. Forsok igen.')
+          setAuthBusy(false)
+          return
+        }
+
+        const signUpAttempt = await signUp.create({
+          emailAddress: authEmail,
+          password: authPassword,
+        })
+
+        if (signUpAttempt.status === 'complete' && signUpAttempt.createdSessionId) {
+          await setSignUpActive({ session: signUpAttempt.createdSessionId })
+        } else {
+          setStatus(
+            'Konto skapat. Slutfor verifiering i Clerk-flodet om det efterfragas.',
+          )
+        }
+      }
+    } catch (error) {
+      const message =
+        error && typeof error === 'object' && 'errors' in error
+          ? String((error as { errors?: Array<{ longMessage?: string }> }).errors?.[0]?.longMessage || 'Auth-fel')
+          : 'Auth-fel'
+      setStatus(message)
+    }
+
+    setAuthBusy(false)
+  }
+
+  const handleGoogleAuth = async () => {
+    setStatus(null)
+    setAuthBusy(true)
+
+    try {
+      if (!signInLoaded || !signIn) {
+        setStatus('Google sign-in ar inte laddad annu. Forsok igen.')
+        setAuthBusy(false)
+        return
+      }
+
+      await signIn.authenticateWithRedirect({
+        strategy: 'oauth_google',
+        redirectUrl: window.location.origin,
+        redirectUrlComplete: window.location.origin,
+      })
+    } catch (error) {
+      const message =
+        error && typeof error === 'object' && 'errors' in error
+          ? String((error as { errors?: Array<{ longMessage?: string }> }).errors?.[0]?.longMessage || 'Google auth-fel')
+          : 'Google auth-fel'
+      setStatus(message)
+      setAuthBusy(false)
+    }
   }
 
   const startCheckout = async () => {
@@ -409,24 +620,158 @@ function App() {
   return (
     <main className="shell">
       <SignedOut>
-        <section className="authCard">
-          <p className="eyebrow">EthioGlow Premium Studio</p>
-          <h1>Logga in med Clerk</h1>
-          <p>
-            Du kan logga in med email eller Google-konto. Aktivera Google i
-            Clerk Dashboard under Social Connections.
-          </p>
-          <div className="clerkWrap">
-            <SignIn
-              appearance={{
-                elements: {
-                  card: 'clerkCard',
-                },
-              }}
-              routing="virtual"
-            />
+        <section className="homePage">
+          <header className="homeTopBar">
+            <h1 className="brand">EthioGlow.</h1>
+
+            <nav className="homeTopics" aria-label="Bildstilar">
+              {HOMEPAGE_TOPICS.map((topic) => (
+                <button
+                  key={topic}
+                  type="button"
+                  className={homeTopic === topic ? 'active' : ''}
+                  onClick={() => setHomeTopic(topic)}
+                >
+                  {topic}
+                </button>
+              ))}
+            </nav>
+
+            <div className="homeActions">
+              <label className="homeSearch" aria-label="Search">
+                <input
+                  type="search"
+                  placeholder="Search"
+                  value={homeSearch}
+                  onChange={(event) => setHomeSearch(event.target.value)}
+                />
+              </label>
+
+              <button type="button" className="ghostAction">
+                New images
+              </button>
+              <button type="button" className="ghostAction">
+                Favorit
+              </button>
+              <button
+                type="button"
+                className={authMode === 'sign-in' ? 'darkAction active' : 'darkAction'}
+                onClick={() => setAuthMode('sign-in')}
+              >
+                Login
+              </button>
+              <button
+                type="button"
+                className={authMode === 'sign-up' ? 'darkAction active' : 'darkAction'}
+                onClick={() => setAuthMode('sign-up')}
+              >
+                Register
+              </button>
+            </div>
+          </header>
+
+          <section
+            className="homeSlider"
+            onTouchStart={handleHomepageTouchStart}
+            onTouchEnd={handleHomepageTouchEnd}
+          >
+            <button
+              type="button"
+              className="homeSliderNav left"
+              onClick={showPrevHomepageSlide}
+              aria-label="Forra bild"
+            >
+              ←
+            </button>
+
+            <div className="homeFrame">
+              {homepageFrame.map((slide, index) => (
+                <article
+                  key={slide.id}
+                  className={`homeCard ${index === Math.floor(homepageFrame.length / 2) ? 'focus' : ''}`}
+                >
+                  <img src={slide.url} alt={slide.title} loading="lazy" />
+                </article>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              className="homeSliderNav right"
+              onClick={showNextHomepageSlide}
+              aria-label="Nasta bild"
+            >
+              →
+            </button>
+          </section>
+
+          <div className="homeSliderMeta">
+            <div className="homeDots" aria-hidden="true">
+              {homepageSlides.slice(0, 8).map((slide, index) => (
+                <span
+                  key={slide.id}
+                  className={homeSlideIndex % Math.max(homepageSlides.length, 1) === index ? 'active' : ''}
+                />
+              ))}
+            </div>
           </div>
-          {status && <p className="status">{status}</p>}
+
+          <p className="homeAiNotice">
+            Alla bilder pa startsidan ar markerade som AI-skapade.
+          </p>
+
+          <section className="homeAuthPanel">
+            <form className="authForm" onSubmit={handleAuthSubmit}>
+              <div className="authSwitch" role="tablist" aria-label="Valj auth-lage">
+                <button
+                  type="button"
+                  className={authMode === 'sign-in' ? 'active' : ''}
+                  onClick={() => setAuthMode('sign-in')}
+                >
+                  Login
+                </button>
+                <button
+                  type="button"
+                  className={authMode === 'sign-up' ? 'active' : ''}
+                  onClick={() => setAuthMode('sign-up')}
+                >
+                  Register
+                </button>
+              </div>
+
+              <input
+                type="email"
+                placeholder="Email"
+                value={authEmail}
+                onChange={(event) => setAuthEmail(event.target.value)}
+                required
+              />
+              <input
+                type="password"
+                placeholder="Losenord"
+                value={authPassword}
+                onChange={(event) => setAuthPassword(event.target.value)}
+                required
+                minLength={8}
+              />
+
+              <div className="homeAuthActions">
+                <button type="submit" disabled={authBusy}>
+                  {authMode === 'sign-in' ? 'Login' : 'Register'}
+                </button>
+                <button
+                  type="button"
+                  className="googleBtn"
+                  onClick={handleGoogleAuth}
+                  disabled={authBusy}
+                >
+                  Google
+                </button>
+              </div>
+            </form>
+
+            {status && <p className="status">{status}</p>}
+          </section>
         </section>
       </SignedOut>
 
