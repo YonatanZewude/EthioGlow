@@ -1,0 +1,485 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Space+Grotesk:wght@400;500;700&display=swap');
+
+:root {
+  --ink: #102331;
+  --paper: #f5f2e9;
+  --card: rgba(255, 255, 255, 0.76);
+  --line: rgba(16, 35, 49, 0.15);
+  --accent: #d44f25;
+  --accent-soft: #f7b267;
+  --good: #2d7a4b;
+  --shadow: 0 16px 40px rgba(16, 35, 49, 0.14);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: 'Space Grotesk', sans-serif;
+  background:
+    radial-gradient(circle at 15% 20%, #ffd8ad 0%, transparent 35%),
+    radial-gradient(circle at 80% 10%, #f7b267 0%, transparent 30%),
+    radial-gradient(circle at 75% 80%, #9ac8b8 0%, transparent 26%),
+    var(--paper);
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3 {
+  font-family: 'Fraunces', serif;
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.shell {
+  width: min(1180px, 96vw);
+  margin: 1rem auto;
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: rgba(245, 242, 233, 0.72);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 1rem;
+}
+
+.authCard,
+.paywall,
+.recent,
+.adminPanel,
+.policyGrid article {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 1rem;
+}
+
+.topBar {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  background: linear-gradient(120deg, #fff5e8, #ffe3b4);
+  border: 1px solid rgba(212, 79, 37, 0.24);
+  border-radius: 18px;
+  padding: 1rem;
+}
+
+.topBar h1,
+.authCard h1 {
+  font-size: clamp(1.6rem, 3.2vw, 2.4rem);
+  margin: 0.35rem 0;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  color: rgba(16, 35, 49, 0.72);
+}
+
+.authForm,
+.uploadForm {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.clerkWrap {
+  margin-top: 1rem;
+  display: grid;
+  place-items: center;
+}
+
+.clerkCard {
+  box-shadow: none;
+}
+
+input,
+textarea,
+select {
+  width: 100%;
+  padding: 0.7rem 0.8rem;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+textarea {
+  min-height: 92px;
+}
+
+button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.6rem 1rem;
+  background: var(--ink);
+  color: #fff;
+  cursor: pointer;
+  transition: transform 150ms ease, background 150ms ease;
+}
+
+button:hover {
+  transform: translateY(-2px);
+  background: #18384e;
+}
+
+button:disabled {
+  opacity: 0.65;
+  transform: none;
+  cursor: not-allowed;
+}
+
+.authActions,
+.gridTwo,
+.metaRow {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.filters {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 0.75rem;
+}
+
+.filters {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.filters button {
+  background: #edf2f5;
+  color: var(--ink);
+  border: 1px solid rgba(16, 35, 49, 0.08);
+}
+
+.filters button.active {
+  background: linear-gradient(120deg, var(--accent), var(--accent-soft));
+  color: #fff;
+}
+
+.filters select {
+  width: auto;
+  min-width: 220px;
+}
+
+.recentList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.recentItem {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.6rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.contentGrid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+}
+
+.galleryBoard {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.galleryCategoryCard {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 0.75rem;
+}
+
+.galleryHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.65rem;
+}
+
+.galleryGrid {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+.galleryItem {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.4rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.galleryThumb {
+  border: 0;
+  border-radius: 10px;
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+.galleryThumb img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  display: block;
+  transition: transform 140ms ease;
+}
+
+.galleryThumb:hover img {
+  transform: scale(1.05);
+}
+
+.galleryItemMeta {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.galleryItemMeta strong {
+  font-size: 0.9rem;
+  line-height: 1.2;
+}
+
+.galleryItemMeta button {
+  padding: 0.45rem 0.7rem;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 17, 25, 0.86);
+  backdrop-filter: blur(4px);
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 0.8rem;
+}
+
+.lightboxInner {
+  position: relative;
+  width: min(980px, 96vw);
+  background: rgba(16, 35, 49, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  padding: 0.7rem;
+}
+
+.lightboxImage {
+  width: 100%;
+  max-height: 78vh;
+  object-fit: contain;
+  border-radius: 12px;
+  display: block;
+  background: #0b1119;
+}
+
+.lightboxClose {
+  position: absolute;
+  right: 0.7rem;
+  top: 0.7rem;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  padding: 0;
+  background: rgba(16, 35, 49, 0.72);
+}
+
+.lightboxNav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  width: 2.2rem;
+  height: 2.2rem;
+  padding: 0;
+  background: rgba(16, 35, 49, 0.72);
+}
+
+.lightboxNav.left {
+  left: 0.7rem;
+}
+
+.lightboxNav.right {
+  right: 0.7rem;
+}
+
+.lightboxCaption {
+  color: #f5f2e9;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 0.8rem;
+  background: var(--card);
+  display: grid;
+  gap: 0.65rem;
+}
+
+.card img,
+.card video {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 14px;
+  background: #d8dde1;
+}
+
+.card header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.card header span {
+  font-size: 0.8rem;
+  color: rgba(16, 35, 49, 0.75);
+}
+
+.metaRow {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.policyGrid {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.status {
+  border-left: 3px solid var(--good);
+  background: rgba(45, 122, 75, 0.12);
+  padding: 0.6rem 0.75rem;
+  border-radius: 10px;
+}
+
+.emptyState {
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 12px;
+  padding: 0.8rem;
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.checkboxRow input {
+  width: auto;
+}
+
+@media (max-width: 768px) {
+  .shell {
+    width: 100%;
+    margin: 0;
+    border-radius: 0;
+    min-height: 100vh;
+  }
+
+  .topBar {
+    flex-direction: column;
+  }
+
+  .authActions,
+  .gridTwo {
+    grid-template-columns: 1fr;
+  }
+
+  .metaRow {
+    grid-template-columns: 1fr;
+  }
+
+  .filters {
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    padding-bottom: 0.8rem;
+  }
+
+  .filters button {
+    flex: 0 0 auto;
+  }
+
+  .filters select {
+    min-width: 180px;
+    flex: 0 0 auto;
+  }
+
+  .galleryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lightboxInner {
+    width: 100%;
+    border-radius: 12px;
+  }
+
+  .lightboxNav {
+    width: 2rem;
+    height: 2rem;
+    top: unset;
+    bottom: 0.9rem;
+    transform: none;
+  }
+
+  .lightboxNav.left {
+    left: 0.9rem;
+  }
+
+  .lightboxNav.right {
+    right: 0.9rem;
+  }
+
+  .lightboxCaption {
+    padding-inline: 2.8rem;
+    margin-top: 0.7rem;
+    align-items: center;
+  }
+}
+
+@media (min-width: 769px) {
+  .authActions,
+  .gridTwo {
+    grid-template-columns: 1fr 1fr;
+  }
+}
