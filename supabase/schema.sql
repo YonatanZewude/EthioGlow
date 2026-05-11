@@ -121,7 +121,7 @@ for all using (public.is_admin(public.request_user_id()));
 
 insert into public.categories (name, slug)
 values
-  ('Age 18-24', 'age-18-24'),
+  ('Age 23-24', 'age-23-24'),
   ('Age 25-34', 'age-25-34'),
   ('Age 35+', 'age-35-plus'),
   ('Outdoor', 'outdoor'),
@@ -141,6 +141,7 @@ on conflict (slug) do nothing;
 update public.categories set name = 'New' where slug = 'new';
 update public.categories set name = 'Popular' where slug = 'popular';
 update public.categories set name = 'Image' where slug = 'image';
+update public.categories set name = 'Age 23-24', slug = 'age-23-24' where slug = 'age-18-24';
 
 insert into storage.buckets (id, name, public)
 values ('premium-content', 'premium-content', false)

@@ -63,6 +63,8 @@ function App() {
   const [authMode, setAuthMode] = useState<'sign-in' | 'sign-up'>('sign-in')
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
+  const [verificationCode, setVerificationCode] = useState('')
+  const [pendingVerification, setPendingVerification] = useState(false)
   const [authBusy, setAuthBusy] = useState(false)
   const [homeTopic, setHomeTopic] = useState('Outdoor')
   const [homeSearch, setHomeSearch] = useState('')
@@ -552,6 +554,9 @@ function App() {
 
     try {
       if (authMode === 'sign-in') {
+        setPendingVerification(false)
+        setVerificationCode('')
+
         if (!signInLoaded || !signIn || !setSignInActive) {
           setStatus('Sign-in is not loaded yet. Please try again.')
           setAuthBusy(false)
@@ -566,6 +571,7 @@ function App() {
         if (signInAttempt.status === 'complete' && signInAttempt.createdSessionId) {
           await setSignInActive({ session: signInAttempt.createdSessionId })
           setAutoCheckoutTriggered(false)
+          setStatus('Signed in successfully.')
         } else {
           setStatus('Could not sign in. Please check your credentials.')
         }
@@ -584,10 +590,13 @@ function App() {
         if (signUpAttempt.status === 'complete' && signUpAttempt.createdSessionId) {
           await setSignUpActive({ session: signUpAttempt.createdSessionId })
           setAutoCheckoutTriggered(false)
+          setPendingVerification(false)
+          setVerificationCode('')
+          setStatus('Account created successfully.')
         } else {
-          setStatus(
-            'Account created. Complete verification in Clerk if required.',
-          )
+          await signUp.prepareEmailAddressVerification({ strategy: 'email_code' })
+          setPendingVerification(true)
+          setStatus('Check your email and enter the verification code to finish sign-up.')
         }
       }
     } catch (error) {
@@ -595,6 +604,42 @@ function App() {
         error && typeof error === 'object' && 'errors' in error
           ? String((error as { errors?: Array<{ longMessage?: string }> }).errors?.[0]?.longMessage || 'Auth error')
           : 'Auth error'
+      setStatus(message)
+    }
+
+    setAuthBusy(false)
+  }
+
+  const handleEmailCodeVerification = async (event: FormEvent) => {
+    event.preventDefault()
+    setStatus(null)
+    setAuthBusy(true)
+
+    try {
+      if (!signUpLoaded || !signUp || !setSignUpActive) {
+        setStatus('Sign-up verification is not loaded yet. Please try again.')
+        setAuthBusy(false)
+        return
+      }
+
+      const result = await signUp.attemptEmailAddressVerification({
+        code: verificationCode,
+      })
+
+      if (result.status === 'complete' && result.createdSessionId) {
+        await setSignUpActive({ session: result.createdSessionId })
+        setPendingVerification(false)
+        setVerificationCode('')
+        setAutoCheckoutTriggered(false)
+        setStatus('Email verified. Your account is now active.')
+      } else {
+        setStatus('Verification is incomplete. Please try the code again.')
+      }
+    } catch (error) {
+      const message =
+        error && typeof error === 'object' && 'errors' in error
+          ? String((error as { errors?: Array<{ longMessage?: string }> }).errors?.[0]?.longMessage || 'Verification error')
+          : 'Verification error'
       setStatus(message)
     }
 
@@ -841,14 +886,22 @@ function App() {
                 <button
                   type="button"
                   className={authMode === 'sign-in' ? 'active' : ''}
-                  onClick={() => setAuthMode('sign-in')}
+                  onClick={() => {
+                    setAuthMode('sign-in')
+                    setPendingVerification(false)
+                    setVerificationCode('')
+                  }}
                 >
                   Login
                 </button>
                 <button
                   type="button"
                   className={authMode === 'sign-up' ? 'active' : ''}
-                  onClick={() => setAuthMode('sign-up')}
+                  onClick={() => {
+                    setAuthMode('sign-up')
+                    setPendingVerification(false)
+                    setVerificationCode('')
+                  }}
                 >
                   Register
                 </button>
@@ -857,6 +910,7 @@ function App() {
               <input
                 type="email"
                 placeholder="Email"
+                autoComplete="email"
                 value={authEmail}
                 onChange={(event) => setAuthEmail(event.target.value)}
                 required
@@ -864,11 +918,23 @@ function App() {
               <input
                 type="password"
                 placeholder="Password"
+                autoComplete={authMode === 'sign-in' ? 'current-password' : 'new-password'}
                 value={authPassword}
                 onChange={(event) => setAuthPassword(event.target.value)}
                 required
                 minLength={8}
               />
+
+              {pendingVerification && authMode === 'sign-up' && (
+                <input
+                  type="text"
+                  placeholder="Email verification code"
+                  autoComplete="one-time-code"
+                  value={verificationCode}
+                  onChange={(event) => setVerificationCode(event.target.value)}
+                  required
+                />
+              )}
 
               <div className="homeAuthActions">
                 <button type="submit" disabled={authBusy}>
@@ -884,6 +950,16 @@ function App() {
                 </button>
               </div>
             </form>
+
+            {pendingVerification && authMode === 'sign-up' && (
+              <form className="authForm" onSubmit={handleEmailCodeVerification}>
+                <button type="submit" disabled={authBusy || !verificationCode.trim()}>
+                  Verify email code
+                </button>
+              </form>
+            )}
+
+            <div id="clerk-captcha" />
 
             {status && <p className="status">{status}</p>}
           </section>
