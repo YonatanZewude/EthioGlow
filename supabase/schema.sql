@@ -121,12 +121,26 @@ for all using (public.is_admin(public.request_user_id()));
 
 insert into public.categories (name, slug)
 values
-  ('Nytt', 'new'),
-  ('Populärt', 'popular'),
+  ('Age 18-24', 'age-18-24'),
+  ('Age 25-34', 'age-25-34'),
+  ('Age 35+', 'age-35-plus'),
+  ('Outdoor', 'outdoor'),
+  ('Indoor', 'indoor'),
+  ('In nature', 'in-nature'),
+  ('On the beach', 'on-the-beach'),
+  ('Skinny', 'skinny'),
+  ('Thick', 'thick'),
+  ('Fat', 'fat'),
+  ('New', 'new'),
+  ('Popular', 'popular'),
   ('Premium', 'premium'),
   ('Video', 'video'),
-  ('Bild', 'image')
+  ('Image', 'image')
 on conflict (slug) do nothing;
+
+update public.categories set name = 'New' where slug = 'new';
+update public.categories set name = 'Popular' where slug = 'popular';
+update public.categories set name = 'Image' where slug = 'image';
 
 insert into storage.buckets (id, name, public)
 values ('premium-content', 'premium-content', false)

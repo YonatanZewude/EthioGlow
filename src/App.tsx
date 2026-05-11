@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, TouchEvent } from 'react'
 import {
   SignedIn,
@@ -44,16 +44,6 @@ const DEMO_SLIDES = [
   },
 ]
 
-const FILTERS = [
-  { id: 'all', label: 'Alla' },
-  { id: 'new', label: 'Nytt' },
-  { id: 'popular', label: 'Populart' },
-  { id: 'premium', label: 'Premium' },
-  { id: 'video', label: 'Video' },
-  { id: 'image', label: 'Bild' },
-  { id: 'favorites', label: 'Favoriter' },
-]
-
 function App() {
   const { userId, getToken, isLoaded } = useAuth()
   const { user } = useUser()
@@ -65,10 +55,11 @@ function App() {
   const [categories, setCategories] = useState<Category[]>([])
   const [content, setContent] = useState<ContentItem[]>([])
   const [favorites, setFavorites] = useState<Set<string>>(new Set())
-  const [filterId, setFilterId] = useState('all')
+  const [selectedMediaType, setSelectedMediaType] = useState<'image' | 'video'>('image')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
+  const [autoCheckoutTriggered, setAutoCheckoutTriggered] = useState(false)
   const [authMode, setAuthMode] = useState<'sign-in' | 'sign-up'>('sign-in')
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
@@ -76,7 +67,9 @@ function App() {
   const [homeTopic, setHomeTopic] = useState('Outdoor')
   const [homeSearch, setHomeSearch] = useState('')
   const [homeSlideIndex, setHomeSlideIndex] = useState(0)
-  const [homeTouchStartX, setHomeTouchStartX] = useState<number | null>(null)
+  const [homeLightboxIndex, setHomeLightboxIndex] = useState<number | null>(null)
+  const [homeMenuOpen, setHomeMenuOpen] = useState(false)
+  const homeFrameRef = useRef<HTMLDivElement | null>(null)
 
   const [uploadTitle, setUploadTitle] = useState('')
   const [uploadDescription, setUploadDescription] = useState('')
@@ -92,12 +85,6 @@ function App() {
 
   const isAdmin = profile?.role === 'admin'
   const hasAccess = Boolean(profile?.subscription_active || isAdmin)
-
-  const recentUploads = useMemo(() => {
-    return [...content]
-      .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at))
-      .slice(0, 5)
-  }, [content])
 
   const ensureProfile = useCallback(
     async (id: string, email: string | null) => {
@@ -205,46 +192,71 @@ function App() {
     [ensureProfile, loadCategories, loadContent, loadFavorites, loadProfile],
   )
 
-  const filteredContent = useMemo(() => {
-    const byCategory = content.filter(
-      (item) => selectedCategory === 'all' || item.category_id === selectedCategory,
+  const mediaContent = useMemo(() => {
+    return content.filter(
+      (item) =>
+        item.type === selectedMediaType
+        && (selectedCategory === 'all' || item.category_id === selectedCategory),
+    )
+  }, [content, selectedCategory, selectedMediaType])
+
+  const categoriesForSelectedMedia = useMemo(() => {
+    return categories
+  }, [categories])
+
+  const startCheckout = useCallback(async () => {
+    if (!userId) return
+
+    setStatus(null)
+    setBusy(true)
+
+    try {
+      const clerkToken = await getToken()
+      const backendUrl = import.meta.env.VITE_STRIPE_BACKEND_URL
+
+      if (!backendUrl) {
+        setStatus('Stripe backend URL is missing.')
+        setBusy(false)
+        return
+      }
+
+      const response = await fetch(
+        `${backendUrl}/api/stripe/create-checkout-session`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${clerkToken || ''}`,
+          },
+        },
+      )
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setStatus(data.error || 'Checkout failed')
+        setBusy(false)
+        return
+      }
+
+      window.location.href = data.url
+    } catch {
+      setStatus('Could not start Stripe checkout. Please try again.')
+      setBusy(false)
+    }
+  }, [getToken, userId])
+
+  useEffect(() => {
+    if (selectedCategory === 'all') return
+
+    const existsInCurrentMedia = categoriesForSelectedMedia.some(
+      (category) => category.id === selectedCategory,
     )
 
-    if (filterId === 'new') {
-      return byCategory
-        .slice()
-        .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at))
-        .slice(0, 12)
+    if (!existsInCurrentMedia) {
+      setSelectedCategory('all')
     }
-
-    if (filterId === 'popular') {
-      return byCategory
-        .filter((item) => (item.favorites?.[0]?.count || 0) > 0)
-        .sort((a, b) => (b.favorites?.[0]?.count || 0) - (a.favorites?.[0]?.count || 0))
-    }
-
-    return byCategory.filter((item) => {
-      if (filterId === 'all') return true
-      if (filterId === 'premium') return item.is_premium
-      if (filterId === 'video') return item.type === 'video'
-      if (filterId === 'image') return item.type === 'image'
-      if (filterId === 'favorites') return favorites.has(item.id)
-      return true
-    })
-  }, [content, favorites, filterId, selectedCategory])
-
-  const imageGalleryByCategory = useMemo(() => {
-    return categories.map((category) => ({
-      category,
-      images: filteredContent.filter(
-        (item) => item.type === 'image' && item.category_id === category.id,
-      ),
-    }))
-  }, [categories, filteredContent])
-
-  const filteredVideos = useMemo(() => {
-    return filteredContent.filter((item) => item.type === 'video')
-  }, [filteredContent])
+  }, [categoriesForSelectedMedia, selectedCategory])
 
   const activeLightboxImage = useMemo(() => {
     if (!lightboxImages.length) return null
@@ -281,14 +293,58 @@ function App() {
     return byTopic.length ? byTopic : bySearch
   }, [content, homeSearch, homeTopic])
 
-  const homepageFrame = useMemo(() => {
-    if (!homepageSlides.length) return []
-    const count = Math.min(5, homepageSlides.length)
-    return Array.from({ length: count }, (_, offset) => {
-      const index = (homeSlideIndex + offset) % homepageSlides.length
-      return homepageSlides[index]
-    })
-  }, [homeSlideIndex, homepageSlides])
+  const activeHomeSlide = useMemo(() => {
+    if (homeLightboxIndex === null || !homepageSlides.length) return null
+    return homepageSlides[homeLightboxIndex] || null
+  }, [homeLightboxIndex, homepageSlides])
+
+  const homepageDotCount = Math.min(homepageSlides.length, 12)
+
+  const getHomeSlideStep = useCallback(() => {
+    const container = homeFrameRef.current
+    const firstCard = container?.querySelector<HTMLElement>('.homeCard')
+    if (!container || !firstCard) return 0
+
+    const styles = window.getComputedStyle(container)
+    const gap = Number.parseFloat(styles.columnGap || styles.gap || '0') || 0
+    return firstCard.offsetWidth + gap
+  }, [])
+
+  const scrollHomepageBy = useCallback(
+    (direction: 1 | -1) => {
+      const container = homeFrameRef.current
+      if (!container) return
+
+      const step = getHomeSlideStep()
+      if (!step) return
+
+      const maxLeft = Math.max(container.scrollWidth - container.clientWidth, 0)
+
+      if (direction > 0 && container.scrollLeft >= maxLeft - step / 2) {
+        container.scrollTo({ left: 0, behavior: 'smooth' })
+        return
+      }
+
+      if (direction < 0 && container.scrollLeft <= step / 2) {
+        container.scrollTo({ left: maxLeft, behavior: 'smooth' })
+        return
+      }
+
+      container.scrollBy({ left: step * direction, behavior: 'smooth' })
+    },
+    [getHomeSlideStep],
+  )
+
+  const handleHomeFrameScroll = useCallback(() => {
+    const container = homeFrameRef.current
+    if (!container || !homepageSlides.length) return
+
+    const step = getHomeSlideStep()
+    if (!step) return
+
+    const nextIndex = Math.round(container.scrollLeft / step)
+    setHomeSlideIndex(Math.max(0, Math.min(nextIndex, homepageSlides.length - 1)))
+  }, [getHomeSlideStep, homepageSlides.length])
 
   useEffect(() => {
     if (!isLoaded) return
@@ -309,7 +365,7 @@ function App() {
       const token = tokenFromTemplate || (await getToken())
 
       if (!token) {
-        setStatus('Kunde inte hamta Clerk token for Supabase.')
+        setStatus('Could not get Clerk token for Supabase.')
         return
       }
 
@@ -348,14 +404,39 @@ function App() {
   }, [lightboxImages])
 
   useEffect(() => {
+    if (homeLightboxIndex === null || !homepageSlides.length) return
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setHomeLightboxIndex(null)
+      }
+      if (event.key === 'ArrowLeft') {
+        setHomeLightboxIndex((prev) => {
+          if (prev === null) return prev
+          return (prev - 1 + homepageSlides.length) % homepageSlides.length
+        })
+      }
+      if (event.key === 'ArrowRight') {
+        setHomeLightboxIndex((prev) => {
+          if (prev === null) return prev
+          return (prev + 1) % homepageSlides.length
+        })
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [homeLightboxIndex, homepageSlides])
+
+  useEffect(() => {
     if (!homepageSlides.length) return
 
     const timer = window.setInterval(() => {
-      setHomeSlideIndex((prev) => (prev + 1) % homepageSlides.length)
+      scrollHomepageBy(1)
     }, 4200)
 
     return () => window.clearInterval(timer)
-  }, [homepageSlides])
+  }, [homepageSlides.length, scrollHomepageBy])
 
   useEffect(() => {
     if (!homepageSlides.length) {
@@ -364,9 +445,43 @@ function App() {
     }
 
     if (homeSlideIndex > homepageSlides.length - 1) {
-      setHomeSlideIndex(0)
+      setHomeSlideIndex(homepageSlides.length - 1)
     }
-  }, [homeSlideIndex, homepageSlides])
+  }, [homeSlideIndex, homepageSlides.length])
+
+  useEffect(() => {
+    const container = homeFrameRef.current
+    if (!container) return
+
+    container.scrollTo({ left: 0, behavior: 'auto' })
+    setHomeSlideIndex(0)
+  }, [homeSearch, homeTopic])
+
+  useEffect(() => {
+    if (!isLoaded || !userId) {
+      setAutoCheckoutTriggered(false)
+      return
+    }
+
+    if (!profile) return
+    if (hasAccess) {
+      setAutoCheckoutTriggered(false)
+      return
+    }
+    if (autoCheckoutTriggered || busy) return
+
+    setAutoCheckoutTriggered(true)
+    setStatus('Subscription required. Redirecting to Stripe checkout...')
+    void startCheckout()
+  }, [
+    autoCheckoutTriggered,
+    busy,
+    hasAccess,
+    isLoaded,
+    profile,
+    startCheckout,
+    userId,
+  ])
 
   const openLightbox = (images: ContentItem[], index: number) => {
     setLightboxImages(images)
@@ -405,33 +520,29 @@ function App() {
   }
 
   const showPrevHomepageSlide = () => {
-    setHomeSlideIndex((prev) =>
-      homepageSlides.length ? (prev - 1 + homepageSlides.length) % homepageSlides.length : 0,
-    )
+    scrollHomepageBy(-1)
   }
 
   const showNextHomepageSlide = () => {
-    setHomeSlideIndex((prev) =>
-      homepageSlides.length ? (prev + 1) % homepageSlides.length : 0,
-    )
+    scrollHomepageBy(1)
   }
 
-  const handleHomepageTouchStart = (event: TouchEvent<HTMLDivElement>) => {
-    setHomeTouchStartX(event.changedTouches[0]?.clientX ?? null)
+  const openHomepageLightbox = (index: number) => {
+    setHomeLightboxIndex(index)
   }
 
-  const handleHomepageTouchEnd = (event: TouchEvent<HTMLDivElement>) => {
-    if (homeTouchStartX === null) return
+  const closeHomepageLightbox = () => {
+    setHomeLightboxIndex(null)
+  }
 
-    const touchEndX = event.changedTouches[0]?.clientX ?? homeTouchStartX
-    const delta = touchEndX - homeTouchStartX
+  const showPrevHomepageLightbox = () => {
+    if (!homepageSlides.length || homeLightboxIndex === null) return
+    setHomeLightboxIndex((homeLightboxIndex - 1 + homepageSlides.length) % homepageSlides.length)
+  }
 
-    if (Math.abs(delta) > SWIPE_THRESHOLD) {
-      if (delta < 0) showNextHomepageSlide()
-      if (delta > 0) showPrevHomepageSlide()
-    }
-
-    setHomeTouchStartX(null)
+  const showNextHomepageLightbox = () => {
+    if (!homepageSlides.length || homeLightboxIndex === null) return
+    setHomeLightboxIndex((homeLightboxIndex + 1) % homepageSlides.length)
   }
 
   const handleAuthSubmit = async (event: FormEvent) => {
@@ -442,7 +553,7 @@ function App() {
     try {
       if (authMode === 'sign-in') {
         if (!signInLoaded || !signIn || !setSignInActive) {
-          setStatus('Sign-in ar inte laddad annu. Forsok igen.')
+          setStatus('Sign-in is not loaded yet. Please try again.')
           setAuthBusy(false)
           return
         }
@@ -454,12 +565,13 @@ function App() {
 
         if (signInAttempt.status === 'complete' && signInAttempt.createdSessionId) {
           await setSignInActive({ session: signInAttempt.createdSessionId })
+          setAutoCheckoutTriggered(false)
         } else {
-          setStatus('Kunde inte logga in. Kontrollera dina uppgifter.')
+          setStatus('Could not sign in. Please check your credentials.')
         }
       } else {
         if (!signUpLoaded || !signUp || !setSignUpActive) {
-          setStatus('Registrering ar inte laddad annu. Forsok igen.')
+          setStatus('Sign-up is not loaded yet. Please try again.')
           setAuthBusy(false)
           return
         }
@@ -471,17 +583,18 @@ function App() {
 
         if (signUpAttempt.status === 'complete' && signUpAttempt.createdSessionId) {
           await setSignUpActive({ session: signUpAttempt.createdSessionId })
+          setAutoCheckoutTriggered(false)
         } else {
           setStatus(
-            'Konto skapat. Slutfor verifiering i Clerk-flodet om det efterfragas.',
+            'Account created. Complete verification in Clerk if required.',
           )
         }
       }
     } catch (error) {
       const message =
         error && typeof error === 'object' && 'errors' in error
-          ? String((error as { errors?: Array<{ longMessage?: string }> }).errors?.[0]?.longMessage || 'Auth-fel')
-          : 'Auth-fel'
+          ? String((error as { errors?: Array<{ longMessage?: string }> }).errors?.[0]?.longMessage || 'Auth error')
+          : 'Auth error'
       setStatus(message)
     }
 
@@ -494,7 +607,7 @@ function App() {
 
     try {
       if (!signInLoaded || !signIn) {
-        setStatus('Google sign-in ar inte laddad annu. Forsok igen.')
+        setStatus('Google sign-in is not loaded yet. Please try again.')
         setAuthBusy(false)
         return
       }
@@ -507,41 +620,11 @@ function App() {
     } catch (error) {
       const message =
         error && typeof error === 'object' && 'errors' in error
-          ? String((error as { errors?: Array<{ longMessage?: string }> }).errors?.[0]?.longMessage || 'Google auth-fel')
-          : 'Google auth-fel'
+          ? String((error as { errors?: Array<{ longMessage?: string }> }).errors?.[0]?.longMessage || 'Google auth error')
+          : 'Google auth error'
       setStatus(message)
       setAuthBusy(false)
     }
-  }
-
-  const startCheckout = async () => {
-    setStatus(null)
-    setBusy(true)
-
-    const clerkToken = await getToken()
-
-    const backendUrl = import.meta.env.VITE_STRIPE_BACKEND_URL
-
-    const response = await fetch(
-      `${backendUrl}/api/stripe/create-checkout-session`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${clerkToken || ''}`,
-        },
-      },
-    )
-
-    const data = await response.json()
-
-    if (!response.ok) {
-      setStatus(data.error || 'Checkout failed')
-      setBusy(false)
-      return
-    }
-
-    window.location.href = data.url
   }
 
   const toggleFavorite = async (contentId: string) => {
@@ -613,7 +696,7 @@ function App() {
     setUploadFile(null)
     setUploadCategory('')
     await loadContent()
-    setStatus('Innehall uppladdat.')
+    setStatus('Content uploaded.')
     setBusy(false)
   }
 
@@ -622,75 +705,104 @@ function App() {
       <SignedOut>
         <section className="homePage">
           <header className="homeTopBar">
-            <h1 className="brand">EthioGlow.</h1>
+            <div className="homeBrandRow">
+              <h1 className="brand">EthioGlow.</h1>
+              <button
+                type="button"
+                className="hamburgerMenu"
+                aria-label="Toggle navigation"
+                aria-expanded={homeMenuOpen}
+                onClick={() => setHomeMenuOpen((prev) => !prev)}
+              >
+                ☰
+              </button>
+            </div>
 
-            <nav className="homeTopics" aria-label="Bildstilar">
-              {HOMEPAGE_TOPICS.map((topic) => (
-                <button
-                  key={topic}
-                  type="button"
-                  className={homeTopic === topic ? 'active' : ''}
-                  onClick={() => setHomeTopic(topic)}
-                >
-                  {topic}
+            <div className={`homeMenu ${homeMenuOpen ? 'open' : ''}`}>
+              <nav className="homeTopics" aria-label="Image styles">
+                {HOMEPAGE_TOPICS.map((topic) => (
+                  <button
+                    key={topic}
+                    type="button"
+                    className={homeTopic === topic ? 'active' : ''}
+                    onClick={() => {
+                      setHomeTopic(topic)
+                      setHomeMenuOpen(false)
+                    }}
+                  >
+                    {topic}
+                  </button>
+                ))}
+              </nav>
+
+              <div className="homeActions">
+                <label className="homeSearch" aria-label="Search">
+                  <input
+                    type="search"
+                    placeholder="Search"
+                    value={homeSearch}
+                    onChange={(event) => setHomeSearch(event.target.value)}
+                  />
+                </label>
+
+                <button type="button" className="ghostAction">
+                  New images
                 </button>
-              ))}
-            </nav>
-
-            <div className="homeActions">
-              <label className="homeSearch" aria-label="Search">
-                <input
-                  type="search"
-                  placeholder="Search"
-                  value={homeSearch}
-                  onChange={(event) => setHomeSearch(event.target.value)}
-                />
-              </label>
-
-              <button type="button" className="ghostAction">
-                New images
-              </button>
-              <button type="button" className="ghostAction">
-                Favorit
-              </button>
-              <button
-                type="button"
-                className={authMode === 'sign-in' ? 'darkAction active' : 'darkAction'}
-                onClick={() => setAuthMode('sign-in')}
-              >
-                Login
-              </button>
-              <button
-                type="button"
-                className={authMode === 'sign-up' ? 'darkAction active' : 'darkAction'}
-                onClick={() => setAuthMode('sign-up')}
-              >
-                Register
-              </button>
+                <button type="button" className="ghostAction">
+                  Favorites
+                </button>
+                <button
+                  type="button"
+                  className={authMode === 'sign-in' ? 'darkAction active' : 'darkAction'}
+                  onClick={() => {
+                    setAuthMode('sign-in')
+                    setHomeMenuOpen(false)
+                  }}
+                >
+                  Login
+                </button>
+                <button
+                  type="button"
+                  className={authMode === 'sign-up' ? 'darkAction active' : 'darkAction'}
+                  onClick={() => {
+                    setAuthMode('sign-up')
+                    setHomeMenuOpen(false)
+                  }}
+                >
+                  Register
+                </button>
+              </div>
             </div>
           </header>
 
-          <section
-            className="homeSlider"
-            onTouchStart={handleHomepageTouchStart}
-            onTouchEnd={handleHomepageTouchEnd}
-          >
+          <section className="homeSlider">
             <button
               type="button"
               className="homeSliderNav left"
               onClick={showPrevHomepageSlide}
-              aria-label="Forra bild"
+              aria-label="Previous image"
             >
               ←
             </button>
 
-            <div className="homeFrame">
-              {homepageFrame.map((slide, index) => (
+            <div
+              className="homeFrame"
+              ref={homeFrameRef}
+              onScroll={handleHomeFrameScroll}
+            >
+              {homepageSlides.map((slide, index) => (
                 <article
                   key={slide.id}
-                  className={`homeCard ${index === Math.floor(homepageFrame.length / 2) ? 'focus' : ''}`}
+                  className={`homeCard ${index === homeSlideIndex ? 'focus' : ''}`}
                 >
-                  <img src={slide.url} alt={slide.title} loading="lazy" />
+                  <button
+                    type="button"
+                    className="homeCardButton"
+                    onClick={() => openHomepageLightbox(index)}
+                    aria-label={`Open image ${slide.title}`}
+                  >
+                    <img src={slide.url} alt={slide.title} loading="lazy" />
+                  </button>
                 </article>
               ))}
             </div>
@@ -699,7 +811,7 @@ function App() {
               type="button"
               className="homeSliderNav right"
               onClick={showNextHomepageSlide}
-              aria-label="Nasta bild"
+              aria-label="Next image"
             >
               →
             </button>
@@ -707,22 +819,25 @@ function App() {
 
           <div className="homeSliderMeta">
             <div className="homeDots" aria-hidden="true">
-              {homepageSlides.slice(0, 8).map((slide, index) => (
+              {homepageSlides.slice(0, homepageDotCount).map((slide, index) => (
                 <span
                   key={slide.id}
-                  className={homeSlideIndex % Math.max(homepageSlides.length, 1) === index ? 'active' : ''}
+                  className={homeSlideIndex % Math.max(homepageDotCount, 1) === index ? 'active' : ''}
                 />
               ))}
             </div>
           </div>
 
           <p className="homeAiNotice">
-            Alla bilder pa startsidan ar markerade som AI-skapade.
+            All images on this website are AI-generated.
           </p>
 
           <section className="homeAuthPanel">
+            <p className="homeRegisterNote">
+              Register to unlock access to more than 1,000 AI-generated images.
+            </p>
             <form className="authForm" onSubmit={handleAuthSubmit}>
-              <div className="authSwitch" role="tablist" aria-label="Valj auth-lage">
+              <div className="authSwitch" role="tablist" aria-label="Select auth mode">
                 <button
                   type="button"
                   className={authMode === 'sign-in' ? 'active' : ''}
@@ -748,7 +863,7 @@ function App() {
               />
               <input
                 type="password"
-                placeholder="Losenord"
+                placeholder="Password"
                 value={authPassword}
                 onChange={(event) => setAuthPassword(event.target.value)}
                 required
@@ -772,6 +887,57 @@ function App() {
 
             {status && <p className="status">{status}</p>}
           </section>
+
+          {activeHomeSlide && (
+            <section
+              className="lightbox"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Homepage image viewer"
+              onClick={closeHomepageLightbox}
+            >
+              <div
+                className="lightboxInner"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="lightboxClose"
+                  onClick={closeHomepageLightbox}
+                  aria-label="Close"
+                >
+                  x
+                </button>
+                <button
+                  type="button"
+                  className="lightboxNav left"
+                  onClick={showPrevHomepageLightbox}
+                  aria-label="Previous image"
+                >
+                  ←
+                </button>
+                <img
+                  src={activeHomeSlide.url}
+                  alt={activeHomeSlide.title}
+                  className="lightboxImage"
+                />
+                <button
+                  type="button"
+                  className="lightboxNav right"
+                  onClick={showNextHomepageLightbox}
+                  aria-label="Next image"
+                >
+                  →
+                </button>
+                <div className="lightboxCaption">
+                  <strong>{activeHomeSlide.title}</strong>
+                  <span>
+                    {(homeLightboxIndex || 0) + 1} / {homepageSlides.length}
+                  </span>
+                </div>
+              </div>
+            </section>
+          )}
         </section>
       </SignedOut>
 
@@ -781,129 +947,106 @@ function App() {
           <p className="eyebrow">EthioGlow Premium Studio</p>
           <h1>Premium Content Platform</h1>
           <p>
-            Roll: <strong>{profile?.role || 'okand'}</strong> | Subscription:{' '}
-            <strong>{profile?.subscription_status || 'okand'}</strong>
+            Role: <strong>{profile?.role || 'unknown'}</strong> | Subscription:{' '}
+            <strong>{profile?.subscription_status || 'unknown'}</strong>
           </p>
         </div>
         <UserButton afterSignOutUrl="/" />
       </header>
 
+      <p className="homeAiNotice siteAiNotice">All images on this website are AI-generated.</p>
+
       {!hasAccess && (
         <section className="paywall">
-          <h2>Aktivera medlemskap</h2>
+          <h2>Activate membership</h2>
           <p>
-            Du maste ha en aktiv Stripe subscription for att se premium bilder
-            och videos.
+            You need an active Stripe subscription to view premium images and
+            videos.
           </p>
           <button onClick={startCheckout} disabled={busy}>
-            Betala subscription
+            Start subscription
           </button>
         </section>
       )}
 
       {hasAccess && (
         <>
-          <section className="filters">
-            {FILTERS.map((filter) => (
-              <button
-                key={filter.id}
-                className={filterId === filter.id ? 'active' : ''}
-                onClick={() => setFilterId(filter.id)}
-              >
-                {filter.label}
-              </button>
-            ))}
-
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
+          <section className="mediaSwitcher">
+            <button
+              type="button"
+              className={selectedMediaType === 'image' ? 'active' : ''}
+              onClick={() => setSelectedMediaType('image')}
             >
-              <option value="all">Alla kategorier</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
+              Images
+            </button>
+            <button
+              type="button"
+              className={selectedMediaType === 'video' ? 'active' : ''}
+              onClick={() => setSelectedMediaType('video')}
+            >
+              Videos
+            </button>
           </section>
 
-          <section className="recent">
-            <h2>Senast uppladdat</h2>
-            <div className="recentList">
-              {recentUploads.map((item) => (
-                <article key={item.id} className="recentItem">
-                  <strong>{item.title}</strong>
-                  <span>{new Date(item.created_at).toLocaleDateString()}</span>
-                </article>
-              ))}
-            </div>
+          <section className="categoryStrip">
+            <button
+              type="button"
+              className={selectedCategory === 'all' ? 'active' : ''}
+              onClick={() => setSelectedCategory('all')}
+            >
+              All categories
+            </button>
+            {categoriesForSelectedMedia.map((category) => (
+              <button
+                key={category.id}
+                type="button"
+                className={selectedCategory === category.id ? 'active' : ''}
+                onClick={() => setSelectedCategory(category.id)}
+              >
+                {category.name}
+              </button>
+            ))}
           </section>
 
           <section className="contentGrid">
-            {filteredVideos.map((item) => (
+            {mediaContent.map((item, index) => (
               <article key={item.id} className="card">
                 <header>
                   <h3>{item.title}</h3>
-                  <span>{item.categories?.[0]?.name || 'Ingen kategori'}</span>
+                  <span>{item.categories?.[0]?.name || 'No category'}</span>
                 </header>
 
-                <video src={item.signedUrl} controls preload="metadata" />
+                {selectedMediaType === 'video' ? (
+                  <video src={item.signedUrl} controls preload="metadata" />
+                ) : (
+                  <button
+                    type="button"
+                    className="galleryThumb"
+                    onClick={() => openLightbox(mediaContent, index)}
+                  >
+                    <img src={item.signedUrl} alt={item.title} loading="lazy" />
+                  </button>
+                )}
 
                 <p>{item.description}</p>
                 <div className="metaRow">
                   <small>
-                    {item.type.toUpperCase()} | Favoriter:{' '}
+                    {item.type.toUpperCase()} | Favorites:{' '}
                     {item.favorites?.[0]?.count || 0}
                   </small>
                   <button onClick={() => toggleFavorite(item.id)}>
-                    {favorites.has(item.id) ? 'Ta bort favorit' : 'Spara favorit'}
+                    {favorites.has(item.id) ? 'Remove favorite' : 'Save favorite'}
                   </button>
                 </div>
               </article>
             ))}
 
-            {filteredVideos.length === 0 && (
-              <p className="emptyState">Inga videos matchar valt filter.</p>
+            {mediaContent.length === 0 && (
+              <p className="emptyState">
+                No {selectedMediaType === 'image' ? 'image content' : 'video content'}
+                {' '}matches the selected category.
+              </p>
             )}
-          </section>
-
-          <section className="galleryBoard">
-            <h2>Bildgalleri per kategori</h2>
-            {imageGalleryByCategory.map(({ category, images }) => (
-              <article key={category.id} className="galleryCategoryCard">
-                <div className="galleryHeader">
-                  <h3>{category.name}</h3>
-                  <small>{images.length} bilder</small>
-                </div>
-
-                {images.length > 0 ? (
-                  <div className="galleryGrid">
-                    {images.map((image, index) => (
-                      <div key={image.id} className="galleryItem">
-                        <button
-                          type="button"
-                          className="galleryThumb"
-                          onClick={() => openLightbox(images, index)}
-                        >
-                          <img src={image.signedUrl} alt={image.title} loading="lazy" />
-                        </button>
-                        <div className="galleryItemMeta">
-                          <strong>{image.title}</strong>
-                          <button
-                            type="button"
-                            onClick={() => toggleFavorite(image.id)}
-                          >
-                            {favorites.has(image.id) ? 'Ta bort favorit' : 'Spara favorit'}
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="emptyState">Inga bilder i denna kategori just nu.</p>
-                )}
-              </article>
-            ))}
           </section>
         </>
       )}
@@ -914,13 +1057,13 @@ function App() {
           <form onSubmit={handleUpload} className="uploadForm">
             <input
               type="text"
-              placeholder="Titel"
+              placeholder="Title"
               value={uploadTitle}
               onChange={(e) => setUploadTitle(e.target.value)}
               required
             />
             <textarea
-              placeholder="Beskrivning"
+              placeholder="Description"
               value={uploadDescription}
               onChange={(e) => setUploadDescription(e.target.value)}
             />
@@ -930,7 +1073,7 @@ function App() {
                 value={uploadType}
                 onChange={(e) => setUploadType(e.target.value as 'image' | 'video')}
               >
-                <option value="image">Bild</option>
+                <option value="image">Image</option>
                 <option value="video">Video</option>
               </select>
 
@@ -939,7 +1082,7 @@ function App() {
                 onChange={(e) => setUploadCategory(e.target.value)}
                 required
               >
-                <option value="">Valj kategori</option>
+                <option value="">Select category</option>
                 {categories.map((category) => (
                   <option key={category.id} value={category.id}>
                     {category.name}
@@ -954,7 +1097,7 @@ function App() {
                 checked={uploadPremium}
                 onChange={(e) => setUploadPremium(e.target.checked)}
               />
-              Markera som premium
+              Mark as premium
             </label>
 
             <input
@@ -964,7 +1107,7 @@ function App() {
               required
             />
             <button type="submit" disabled={busy}>
-              Ladda upp
+              Upload
             </button>
           </form>
         </section>
@@ -972,31 +1115,31 @@ function App() {
 
       <section className="policyGrid">
         <article>
-          <h3>Copyright-regler</h3>
+          <h3>Copyright Rules</h3>
           <p>
-            Endast material du ager eller har licens for far laddas upp. Inget
-            piratkopierat, inget otillat ompublicerat innehall.
+            Only upload content you own or are licensed to use. No pirated or
+            unauthorized reposted material.
           </p>
         </article>
         <article>
-          <h3>Alderspolicy</h3>
+          <h3>Age Policy</h3>
           <p>
-            Plattformen ar 18+. Material med minderariga ar strikt forbjudet och
-            leder till permanent avstangning.
+            This platform is 18+. Any content involving minors is strictly
+            forbidden and leads to permanent suspension.
           </p>
         </article>
         <article>
-          <h3>Integritet</h3>
+          <h3>Privacy</h3>
           <p>
-            Publicera aldrig personuppgifter utan samtycke. Kanslig data, privata
-            adresser och identifierbar info ar forbjudet.
+            Never publish personal information without consent. Sensitive data,
+            private addresses, and identifying information are forbidden.
           </p>
         </article>
         <article>
-          <h3>Forbjudet innehall</h3>
+          <h3>Prohibited Content</h3>
           <p>
-            Inget hat, trakasserier, explicit olagligt material, valdsglorifiering
-            eller innehall som bryter svensk lag.
+            No hate, harassment, explicit illegal material, glorification of
+            violence, or content that violates Swedish law.
           </p>
         </article>
       </section>
@@ -1008,7 +1151,7 @@ function App() {
           className="lightbox"
           role="dialog"
           aria-modal="true"
-          aria-label="Bildvisare"
+          aria-label="Image viewer"
           onClick={closeLightbox}
         >
           <div
@@ -1021,7 +1164,7 @@ function App() {
               type="button"
               className="lightboxClose"
               onClick={closeLightbox}
-              aria-label="Stang"
+              aria-label="Close"
             >
               x
             </button>
@@ -1029,7 +1172,7 @@ function App() {
               type="button"
               className="lightboxNav left"
               onClick={showPrevLightboxImage}
-              aria-label="Forra bild"
+              aria-label="Previous image"
             >
               ←
             </button>
@@ -1042,7 +1185,7 @@ function App() {
               type="button"
               className="lightboxNav right"
               onClick={showNextLightboxImage}
-              aria-label="Nasta bild"
+              aria-label="Next image"
             >
               →
             </button>

@@ -75,12 +75,18 @@ select {
 
 .homeTopBar {
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
+  grid-template-columns: auto 1fr;
+  align-items: start;
   gap: 1rem;
   padding: 0.85rem 1rem;
   border-bottom: 1px solid rgba(16, 35, 49, 0.1);
   background: #fff;
+}
+
+.homeBrandRow {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
 }
 
 .brand {
@@ -90,9 +96,25 @@ select {
   letter-spacing: -0.03em;
 }
 
+.hamburgerMenu {
+  display: none;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 10px;
+  padding: 0;
+  font-size: 1.1rem;
+}
+
+.homeMenu {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 1rem;
+}
+
 .homeTopics {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 0.7rem;
   flex-wrap: wrap;
 }
@@ -116,10 +138,12 @@ select {
   display: flex;
   align-items: center;
   gap: 0.45rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .homeSearch input {
-  width: 220px;
+  width: clamp(180px, 21vw, 280px);
   border-radius: 10px;
   padding-block: 0.52rem;
 }
@@ -158,13 +182,27 @@ select {
 }
 
 .homeFrame {
-  display: grid;
+  display: flex;
   gap: 0.85rem;
-  grid-template-columns: repeat(5, minmax(120px, 1fr));
   align-items: end;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  padding-bottom: 0.3rem;
+}
+
+.homeFrame::-webkit-scrollbar {
+  height: 8px;
+}
+
+.homeFrame::-webkit-scrollbar-thumb {
+  background: rgba(16, 35, 49, 0.22);
+  border-radius: 999px;
 }
 
 .homeCard {
+  flex: 0 0 clamp(180px, 18vw, 290px);
+  scroll-snap-align: start;
   border-radius: 6px;
   overflow: hidden;
   background: #d9d9d9;
@@ -181,9 +219,18 @@ select {
   filter: saturate(1.03);
 }
 
-.homeCard img {
+.homeCardButton {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
   width: 100%;
   height: 100%;
+  background: transparent;
+}
+
+.homeCard img {
+  width: 100%;
+  height: 420px;
   object-fit: cover;
   display: block;
 }
@@ -240,6 +287,14 @@ select {
   padding: 0.95rem 1rem 1.1rem;
 }
 
+.homeRegisterNote {
+  margin-top: 0.3rem;
+  margin-bottom: 0.1rem;
+  text-align: center;
+  color: var(--ink);
+  font-weight: 500;
+}
+
 .homeAiNotice {
   margin: 0;
   padding: 0.7rem 1rem;
@@ -249,6 +304,12 @@ select {
   color: rgba(16, 35, 49, 0.8);
   text-align: center;
   letter-spacing: 0.02em;
+}
+
+.siteAiNotice {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin-top: 0.25rem;
 }
 
 .homeAuthActions {
@@ -467,6 +528,31 @@ button:disabled {
 .filters {
   overflow-x: auto;
   scrollbar-width: thin;
+}
+
+.mediaSwitcher,
+.categoryStrip {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 0.75rem;
+}
+
+.mediaSwitcher button,
+.categoryStrip button {
+  background: #edf2f5;
+  color: var(--ink);
+  border: 1px solid rgba(16, 35, 49, 0.08);
+}
+
+.mediaSwitcher button.active,
+.categoryStrip button.active {
+  background: linear-gradient(120deg, var(--accent), var(--accent-soft));
+  color: #fff;
 }
 
 .filters button {
@@ -720,24 +806,58 @@ button:disabled {
 
   .homeTopBar {
     grid-template-columns: 1fr;
-    align-items: start;
+    gap: 0.75rem;
+    align-items: stretch;
+  }
+
+  .homeBrandRow {
+    justify-content: space-between;
+  }
+
+  .hamburgerMenu {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .homeMenu {
+    display: none;
+    grid-template-columns: 1fr;
+    gap: 0.65rem;
+    border-top: 1px solid rgba(16, 35, 49, 0.1);
+    padding-top: 0.65rem;
+  }
+
+  .homeMenu.open {
+    display: grid;
   }
 
   .homeTopics {
-    justify-content: flex-start;
-    overflow-x: auto;
-    flex-wrap: nowrap;
-    padding-bottom: 0.2rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.3rem 0.65rem;
   }
 
   .homeActions {
     width: 100%;
-    overflow-x: auto;
-    padding-bottom: 0.2rem;
+    justify-content: flex-start;
+    overflow: visible;
+    gap: 0.5rem;
+  }
+
+  .homeSearch {
+    width: 100%;
   }
 
   .homeSearch input {
-    width: 180px;
+    width: 100%;
+  }
+
+  .ghostAction,
+  .darkAction {
+    flex: 1 1 calc(50% - 0.5rem);
+    min-width: 132px;
+    text-align: center;
   }
 
   .homeSlider {
@@ -745,16 +865,21 @@ button:disabled {
   }
 
   .homeFrame {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.6rem;
   }
 
   .homeCard {
+    flex-basis: min(66vw, 260px);
     min-height: 250px;
     transform: none;
   }
 
   .homeCard.focus {
     transform: none;
+  }
+
+  .homeCard img {
+    height: 250px;
   }
 
   .homeSliderNav {
@@ -785,7 +910,20 @@ button:disabled {
     padding-bottom: 0.8rem;
   }
 
+  .mediaSwitcher,
+  .categoryStrip {
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    overflow-x: auto;
+    padding-bottom: 0.8rem;
+  }
+
   .filters button {
+    flex: 0 0 auto;
+  }
+
+  .mediaSwitcher button,
+  .categoryStrip button {
     flex: 0 0 auto;
   }
 
