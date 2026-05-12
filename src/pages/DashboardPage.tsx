@@ -237,7 +237,14 @@ export default function DashboardPage() {
         }
       }
 
-      const tokenFromTemplate = await getToken({ template: 'supabase' })
+      let tokenFromTemplate: string | null = null
+
+      try {
+        tokenFromTemplate = await getToken({ template: 'supabase' })
+      } catch (error) {
+        console.warn('Missing Clerk JWT template "supabase", falling back to the default session token.', error)
+      }
+
       const token = tokenFromTemplate || clerkToken
 
       if (!token) {
