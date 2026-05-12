@@ -43,8 +43,11 @@ export default function DashboardPage() {
         {
           id,
           email,
+          role: 'paying_user',
+          subscription_status: 'inactive',
+          subscription_active: false,
         },
-        { onConflict: 'id' },
+        { onConflict: 'id', ignoreDuplicates: true },
       )
       if (error) {
         setStatus(error.message)
@@ -424,9 +427,9 @@ export default function DashboardPage() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow">
-        <div className="bg-gray-800 border-l-4 border-yellow-500 p-4 mb-6 rounded-r-lg">
-          <p className="text-sm text-gray-300 flex items-center gap-2">
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+        <div className="bg-gradient-to-r from-blue-900/30 to-blue-800/30 border-l-4 border-blue-500 p-4 mb-6 rounded-r-lg shadow-md">
+          <p className="text-sm text-blue-100 flex items-center gap-2">
+            <svg className="w-5 h-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
               <path
                 fillRule="evenodd"
                 d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
@@ -438,9 +441,9 @@ export default function DashboardPage() {
         </div>
 
         {!hasAccess && (
-          <div className="bg-gray-800 border border-gray-700 rounded-2xl p-8 text-center shadow-lg">
-            <div className="w-20 h-20 mx-auto mb-4 bg-gray-700 rounded-full flex items-center justify-center shadow-md">
-              <svg className="w-10 h-10 text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="bg-gradient-to-br from-purple-900/40 via-gray-800 to-indigo-900/40 border-2 border-purple-500/30 rounded-2xl p-8 text-center shadow-2xl">
+            <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-purple-600 to-indigo-600 rounded-full flex items-center justify-center shadow-lg">
+              <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -451,7 +454,7 @@ export default function DashboardPage() {
             </div>
             <h2 className="text-2xl font-serif font-bold text-white mb-2">Activate Membership</h2>
             <p className="text-gray-300 mb-6 max-w-md mx-auto">
-              You need an active Stripe subscription to view premium images and videos.
+              You need an active subscription to view premium images and videos.
             </p>
             <button
               onClick={startCheckout}
@@ -702,10 +705,10 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-8 mb-8">
-          <div className="bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-700">
-            <div className="w-12 h-12 bg-blue-900/50 rounded-lg flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8 mb-8">
+          <div className="bg-gradient-to-br from-blue-900/40 to-blue-800/30 rounded-xl p-6 shadow-lg border-2 border-blue-500/30 hover:border-blue-400/50 transition-all">
+            <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center mb-4 shadow-md">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -714,15 +717,14 @@ export default function DashboardPage() {
                 />
               </svg>
             </div>
-            <h3 className="text-lg font-serif font-bold text-white mb-2">Copyright Rules</h3>
+            <h3 className="text-lg font-serif font-bold text-white mb-2">Terms of Use</h3>
             <p className="text-sm text-gray-300">
-              Only upload content you own or are licensed to use. No pirated or unauthorized reposted
-              material.
+              All content is for personal viewing only. Redistribution, sharing, or commercial use of images and videos is strictly prohibited.
             </p>
           </div>
-          <div className="bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-700">
-            <div className="w-12 h-12 bg-green-900/50 rounded-lg flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="bg-gradient-to-br from-green-900/40 to-green-800/30 rounded-xl p-6 shadow-lg border-2 border-green-500/30 hover:border-green-400/50 transition-all">
+            <div className="w-12 h-12 bg-gradient-to-br from-green-600 to-green-700 rounded-lg flex items-center justify-center mb-4 shadow-md">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -731,15 +733,14 @@ export default function DashboardPage() {
                 />
               </svg>
             </div>
-            <h3 className="text-lg font-serif font-bold text-white mb-2">Age Policy</h3>
+            <h3 className="text-lg font-serif font-bold text-white mb-2">Age Requirement</h3>
             <p className="text-sm text-gray-300">
-              This platform is 23+. Any content involving minors is strictly forbidden and leads to
-              permanent suspension.
+              You must be 18 years or older to access this platform. All content features adult models aged 23+.
             </p>
           </div>
-          <div className="bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-700">
-            <div className="w-12 h-12 bg-purple-900/50 rounded-lg flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="bg-gradient-to-br from-purple-900/40 to-purple-800/30 rounded-xl p-6 shadow-lg border-2 border-purple-500/30 hover:border-purple-400/50 transition-all">
+            <div className="w-12 h-12 bg-gradient-to-br from-purple-600 to-purple-700 rounded-lg flex items-center justify-center mb-4 shadow-md">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -748,27 +749,9 @@ export default function DashboardPage() {
                 />
               </svg>
             </div>
-            <h3 className="text-lg font-serif font-bold text-white mb-2">Privacy</h3>
+            <h3 className="text-lg font-serif font-bold text-white mb-2">Privacy & Security</h3>
             <p className="text-sm text-gray-300">
-              Never publish personal information without consent. Sensitive data, private addresses, and
-              identifying information are forbidden.
-            </p>
-          </div>
-          <div className="bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-700">
-            <div className="w-12 h-12 bg-red-900/50 rounded-lg flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
-                />
-              </svg>
-            </div>
-            <h3 className="text-lg font-serif font-bold text-white mb-2">Prohibited Content</h3>
-            <p className="text-sm text-gray-300">
-              No hate, harassment, explicit illegal material, glorification of violence, or content that
-              violates Swedish law.
+              Your subscription and viewing activity are kept private. We protect your personal information and secure all transactions.
             </p>
           </div>
         </div>
