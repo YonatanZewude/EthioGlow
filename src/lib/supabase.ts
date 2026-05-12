@@ -72,3 +72,28 @@ export const createCheckoutSession = async (token: string) => {
 
   return data.url as string
 }
+
+export const syncCheckoutSessionWithBackend = async (token: string, sessionId: string) => {
+  const backendUrl = import.meta.env.VITE_STRIPE_BACKEND_URL
+
+  if (!backendUrl) {
+    throw new Error('Backend URL is missing.')
+  }
+
+  const response = await fetch(`${backendUrl}/api/stripe/sync-checkout-session`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ sessionId }),
+  })
+
+  const data = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Could not sync checkout session')
+  }
+
+  return data.profile as SyncedProfile
+}

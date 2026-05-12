@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, TouchEvent } from 'react'
 import { useAuth, useClerk, useUser } from '@clerk/clerk-react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   createCheckoutSession,
   createSupabaseClient,
+  syncCheckoutSessionWithBackend,
   syncProfileWithBackend,
 } from '../lib/supabase'
 import type { Category, ContentItem, Profile } from '../types'
@@ -13,6 +15,8 @@ const SWIPE_THRESHOLD = 42
 const HOME_URL = 'https://www.ethioglow.com'
 
 export default function DashboardPage() {
+  const location = useLocation()
+  const navigate = useNavigate()
   const { userId, getToken, isLoaded } = useAuth()
   const { user } = useUser()
   const { openUserProfile, signOut } = useClerk()
@@ -30,6 +34,7 @@ export default function DashboardPage() {
   const [status, setStatus] = useState<string | null>(null)
   const [autoCheckoutTriggered, setAutoCheckoutTriggered] = useState(false)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const [checkoutStatusSyncing, setCheckoutStatusSyncing] = useState(false)
 
   const [uploadTitle, setUploadTitle] = useState('')
   const [uploadDescription, setUploadDescription] = useState('')
@@ -319,6 +324,7 @@ export default function DashboardPage() {
       }
       return
     }
+    if (checkoutStatusSyncing) return
     if (autoCheckoutTriggered || busy) return
 
     setStatus('Subscription required. Redirecting to Stripe checkout...')
@@ -333,7 +339,49 @@ export default function DashboardPage() {
         checkoutRedirectTimeoutRef.current = null
       }
     }
-  }, [autoCheckoutTriggered, busy, hasAccess, isLoaded, profile, startCheckout, userId])
+  }, [autoCheckoutTriggered, busy, checkoutStatusSyncing, hasAccess, isLoaded, profile, startCheckout, userId])
+
+  useEffect(() => {
+    if (!isLoaded || !userId || !profile) return
+
+    const searchParams = new URLSearchParams(location.search)
+    const checkoutStatus = searchParams.get('checkout')
+    const sessionId = searchParams.get('session_id')
+
+    if (checkoutStatus !== 'success' || !sessionId) return
+
+    const syncCheckoutStatus = async () => {
+      const clerkToken = await getToken()
+
+      if (!clerkToken) {
+        setStatus('Could not verify the successful checkout session.')
+        return
+      }
+
+      setCheckoutStatusSyncing(true)
+      setStatus('Finalizing your membership...')
+
+      try {
+        const nextProfile = await syncCheckoutSessionWithBackend(clerkToken, sessionId)
+        setProfile(nextProfile)
+
+        if (nextProfile?.subscription_active || nextProfile?.role === 'admin') {
+          setAutoCheckoutTriggered(false)
+          navigate('/dashboard', { replace: true })
+          return
+        }
+
+        setStatus('Payment completed, but membership is still being confirmed. Please refresh in a few seconds.')
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Could not sync the checkout result.'
+        setStatus(message)
+      } finally {
+        setCheckoutStatusSyncing(false)
+      }
+    }
+
+    void syncCheckoutStatus()
+  }, [getToken, isLoaded, location.search, navigate, profile, userId])
 
   const openLightbox = (images: ContentItem[], index: number) => {
     setLightboxImages(images)

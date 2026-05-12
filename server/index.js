@@ -104,6 +104,20 @@ const ensureProfile = async (userId, email) => {
   }
 }
 
+const upsertStripeCustomer = async (userId, customerId) => {
+  const { error } = await supabaseAdmin.from('stripe_customers').upsert(
+    {
+      user_id: userId,
+      stripe_customer_id: String(customerId),
+    },
+    { onConflict: 'user_id' },
+  )
+
+  if (error) {
+    throw error
+  }
+}
+
 const getProfileById = async (userId) => {
   const { data, error } = await supabaseAdmin
     .from('profiles')
@@ -147,13 +161,7 @@ app.post(
         const customerId = session.customer
 
         if (userId && customerId) {
-          await supabaseAdmin.from('stripe_customers').upsert(
-            {
-              user_id: userId,
-              stripe_customer_id: String(customerId),
-            },
-            { onConflict: 'user_id' },
-          )
+          await upsertStripeCustomer(userId, customerId)
         }
 
         if (userId && session.subscription) {
@@ -257,7 +265,7 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
           quantity: 1,
         },
       ],
-      success_url: `${process.env.APP_URL}/?checkout=success`,
+      success_url: `${process.env.APP_URL}/dashboard?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.APP_URL}/checkout/cancelled`,
       metadata: {
         clerk_user_id: user.id,
@@ -268,6 +276,38 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
   } catch (err) {
     console.error(err)
     return res.status(500).json({ error: 'Could not create checkout session' })
+  }
+})
+
+app.post('/api/stripe/sync-checkout-session', async (req, res) => {
+  try {
+    const user = await getClerkUserFromAuthorization(req.headers.authorization)
+    const sessionId = req.body?.sessionId
+
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Missing sessionId' })
+    }
+
+    const session = await stripe.checkout.sessions.retrieve(String(sessionId))
+
+    if (session.metadata?.clerk_user_id !== user.id) {
+      return res.status(403).json({ error: 'Checkout session does not belong to this user' })
+    }
+
+    if (session.customer) {
+      await upsertStripeCustomer(user.id, session.customer)
+    }
+
+    if (session.subscription) {
+      const subscription = await stripe.subscriptions.retrieve(String(session.subscription))
+      await updateUserSubscription(user.id, subscription.status, String(subscription.id))
+    }
+
+    const profile = await getProfileById(user.id)
+    return res.status(200).json({ ok: true, profile })
+  } catch (err) {
+    console.error(err)
+    return res.status(500).json({ error: 'Could not sync checkout session' })
   }
 })
 
