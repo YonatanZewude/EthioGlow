@@ -102,6 +102,8 @@ const ensureProfile = async (userId, email) => {
   if (error) {
     throw error
   }
+
+  await clerkClient.users.updateUser(userId, { deleteSelfEnabled: false })
 }
 
 const upsertStripeCustomer = async (userId, customerId) => {
@@ -130,6 +132,100 @@ const getProfileById = async (userId) => {
   }
 
   return data
+}
+
+const getProfileSubscriptionDetails = async (userId) => {
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('stripe_subscription_id')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (error) {
+    throw error
+  }
+
+  return {
+    stripeSubscriptionId: data?.stripe_subscription_id || null,
+  }
+}
+
+const getStripeCustomerIdForUser = async (userId) => {
+  const { data, error } = await supabaseAdmin
+    .from('stripe_customers')
+    .select('stripe_customer_id')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error) {
+    throw error
+  }
+
+  return data?.stripe_customer_id || null
+}
+
+const deleteStripeCustomerMapping = async (userId) => {
+  const { error } = await supabaseAdmin
+    .from('stripe_customers')
+    .delete()
+    .eq('user_id', userId)
+
+  if (error) {
+    throw error
+  }
+}
+
+const markProfileInactive = async (userId) => {
+  const { error } = await supabaseAdmin
+    .from('profiles')
+    .update({
+      subscription_status: 'inactive',
+      subscription_active: false,
+      stripe_subscription_id: null,
+    })
+    .eq('id', userId)
+
+  if (error) {
+    throw error
+  }
+}
+
+const cancelStripeBillingForUser = async (userId) => {
+  const { stripeSubscriptionId } = await getProfileSubscriptionDetails(userId)
+  const customerId = await getStripeCustomerIdForUser(userId)
+
+  const subscriptionIds = new Set()
+
+  if (stripeSubscriptionId) {
+    subscriptionIds.add(String(stripeSubscriptionId))
+  }
+
+  if (customerId) {
+    const subscriptions = await stripe.subscriptions.list({
+      customer: customerId,
+      status: 'all',
+      limit: 100,
+    })
+
+    for (const subscription of subscriptions.data) {
+      if (subscription.status !== 'canceled' && subscription.status !== 'incomplete_expired') {
+        subscriptionIds.add(subscription.id)
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from(subscriptionIds).map(async (subscriptionId) => {
+      await stripe.subscriptions.cancel(subscriptionId)
+    }),
+  )
+
+  if (customerId) {
+    await stripe.customers.del(customerId)
+    await deleteStripeCustomerMapping(userId)
+  }
+
+  await markProfileInactive(userId)
 }
 
 const getOtherActiveSessions = async (sessionId) => {
@@ -238,6 +334,20 @@ app.post('/api/auth/sync-profile', async (req, res) => {
   } catch (err) {
     console.error(err)
     return res.status(500).json({ error: 'Could not sync profile' })
+  }
+})
+
+app.post('/api/auth/deactivate-account', async (req, res) => {
+  try {
+    const user = await getClerkUserFromAuthorization(req.headers.authorization)
+
+    await cancelStripeBillingForUser(user.id)
+    const profile = await getProfileById(user.id)
+
+    return res.status(200).json({ ok: true, profile })
+  } catch (err) {
+    console.error(err)
+    return res.status(500).json({ error: 'Could not deactivate account' })
   }
 })
 
@@ -376,6 +486,27 @@ app.post('/api/stripe/sync-checkout-session', async (req, res) => {
   } catch (err) {
     console.error(err)
     return res.status(500).json({ error: 'Could not sync checkout session' })
+  }
+})
+
+app.post('/api/stripe/create-billing-portal-session', async (req, res) => {
+  try {
+    const user = await getClerkUserFromAuthorization(req.headers.authorization)
+    const customerId = await getStripeCustomerIdForUser(user.id)
+
+    if (!customerId) {
+      return res.status(404).json({ error: 'No Stripe customer found for this user' })
+    }
+
+    const session = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: `${process.env.APP_URL}/dashboard`,
+    })
+
+    return res.status(200).json({ url: session.url })
+  } catch (err) {
+    console.error(err)
+    return res.status(500).json({ error: 'Could not create billing portal session' })
   }
 })
 

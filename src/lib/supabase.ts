@@ -100,6 +100,30 @@ export const resolveSessionConflict = async (sessionId: string, action: 'replace
   return data as { ok: true; revokedSessionCount?: number }
 }
 
+export const deactivateAccount = async (token: string) => {
+  const backendUrl = import.meta.env.VITE_STRIPE_BACKEND_URL
+
+  if (!backendUrl) {
+    throw new Error('Backend URL is missing.')
+  }
+
+  const response = await fetch(`${backendUrl}/api/auth/deactivate-account`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  const data = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Could not deactivate account')
+  }
+
+  return data.profile as SyncedProfile
+}
+
 export const createCheckoutSession = async (token: string) => {
   const backendUrl = import.meta.env.VITE_STRIPE_BACKEND_URL
 
@@ -147,4 +171,28 @@ export const syncCheckoutSessionWithBackend = async (token: string, sessionId: s
   }
 
   return data.profile as SyncedProfile
+}
+
+export const createBillingPortalSession = async (token: string) => {
+  const backendUrl = import.meta.env.VITE_STRIPE_BACKEND_URL
+
+  if (!backendUrl) {
+    throw new Error('Backend URL is missing.')
+  }
+
+  const response = await fetch(`${backendUrl}/api/stripe/create-billing-portal-session`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  const data = await response.json().catch(() => ({}))
+
+  if (!response.ok || !data.url) {
+    throw new Error(data.error || 'Could not open billing portal')
+  }
+
+  return data.url as string
 }

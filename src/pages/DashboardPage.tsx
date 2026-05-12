@@ -3,8 +3,10 @@ import type { FormEvent, TouchEvent } from 'react'
 import { useAuth, useClerk, useUser } from '@clerk/clerk-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
+  createBillingPortalSession,
   createCheckoutSession,
   createSupabaseClient,
+  deactivateAccount,
   syncCheckoutSessionWithBackend,
   syncProfileWithBackend,
 } from '../lib/supabase'
@@ -200,6 +202,28 @@ export default function DashboardPage() {
       setBusy(false)
     }
   }, [getToken, userId])
+
+  const handleManageSubscription = useCallback(async () => {
+    setStatus(null)
+    setBusy(true)
+
+    try {
+      const clerkToken = await getToken()
+
+      if (!clerkToken) {
+        setStatus('Could not get Clerk token for subscription management.')
+        setBusy(false)
+        return
+      }
+
+      const portalUrl = await createBillingPortalSession(clerkToken)
+      window.location.href = portalUrl
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not open subscription settings.'
+      setStatus(message)
+      setBusy(false)
+    }
+  }, [getToken])
 
   useEffect(() => {
     if (selectedCategory === 'all') return
@@ -622,6 +646,38 @@ export default function DashboardPage() {
     void openUserProfile()
   }
 
+  const handleDeactivateAccount = useCallback(async () => {
+    setAccountMenuOpen(false)
+
+    const confirmed = window.confirm(
+      'This will stop your Stripe billing immediately, mark your account as inactive, and sign you out. You can subscribe again later. Continue?',
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    setStatus(null)
+    setBusy(true)
+
+    try {
+      const clerkToken = await getToken()
+
+      if (!clerkToken) {
+        setStatus('Could not get Clerk token for account deactivation.')
+        setBusy(false)
+        return
+      }
+
+      await deactivateAccount(clerkToken)
+      await signOut({ redirectUrl: '/' })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not deactivate account.'
+      setStatus(message)
+      setBusy(false)
+    }
+  }, [getToken, signOut])
+
   const handleSignOut = () => {
     setAccountMenuOpen(false)
     void signOut({ redirectUrl: '/' })
@@ -723,8 +779,26 @@ export default function DashboardPage() {
                     onClick={handleManageAccount}
                     className="w-full px-4 py-3 text-left text-gray-200 hover:bg-gray-700 transition-colors cursor-pointer"
                   >
-                    Manage account
+                    Manage password and security
                   </button>
+                  {!isAdmin && profile?.subscription_active && (
+                    <button
+                      type="button"
+                      onClick={handleManageSubscription}
+                      className="w-full px-4 py-3 text-left text-gray-200 hover:bg-gray-700 transition-colors cursor-pointer border-t border-gray-700"
+                    >
+                      Manage or cancel subscription
+                    </button>
+                  )}
+                  {!isAdmin && (
+                    <button
+                      type="button"
+                      onClick={handleDeactivateAccount}
+                      className="w-full px-4 py-3 text-left text-red-300 hover:bg-red-500/10 transition-colors cursor-pointer border-t border-gray-700"
+                    >
+                      Deactivate account
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={handleSignOut}
