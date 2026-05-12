@@ -288,6 +288,59 @@ export default function LandingPage() {
     setAgeGateStatus('denied')
   }
 
+  // Keyboard navigation for lightbox
+  useEffect(() => {
+    if (homeLightboxIndex === null) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeHomepageLightbox()
+      } else if (e.key === 'ArrowLeft') {
+        showPrevHomepageLightbox()
+      } else if (e.key === 'ArrowRight') {
+        showNextHomepageLightbox()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [homeLightboxIndex, homepageSlides.length])
+
+  // Initial scroll to index 1 on mount
+  useEffect(() => {
+    const container = homeFrameRef.current
+    if (!container || !homepageSlides.length) return
+
+    const step = getHomeSlideStep()
+    if (!step) return
+
+    // Scroll to index 1 without animation
+    setTimeout(() => {
+      container.scrollTo({ left: step, behavior: 'auto' })
+    }, 0)
+  }, [getHomeSlideStep, homepageSlides.length]) // Run once with dependencies
+
+  // Touch swipe for lightbox
+  const handleLightboxTouchStart = (e: React.TouchEvent) => {
+    setLightboxTouchStart(e.touches[0].clientX)
+  }
+
+  const handleLightboxTouchEnd = (e: React.TouchEvent) => {
+    const touchEnd = e.changedTouches[0].clientX
+    const diff = lightboxTouchStart - touchEnd
+    const threshold = 50
+
+    if (Math.abs(diff) > threshold) {
+      if (diff > 0) {
+        // Swiped left, show next
+        showNextHomepageLightbox()
+      } else {
+        // Swiped right, show previous
+        showPrevHomepageLightbox()
+      }
+    }
+  }
+
   if (!isLoaded || ageGateStatus === 'checking') {
     return (
       <div className="min-h-screen bg-linear-to-b from-gray-900 via-slate-900 to-black flex items-center justify-center px-4">
@@ -359,59 +412,6 @@ export default function LandingPage() {
         </div>
       </div>
     )
-  }
-
-  // Keyboard navigation for lightbox
-  useEffect(() => {
-    if (homeLightboxIndex === null) return
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        closeHomepageLightbox()
-      } else if (e.key === 'ArrowLeft') {
-        showPrevHomepageLightbox()
-      } else if (e.key === 'ArrowRight') {
-        showNextHomepageLightbox()
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [homeLightboxIndex, homepageSlides.length])
-
-  // Initial scroll to index 1 on mount
-  useEffect(() => {
-    const container = homeFrameRef.current
-    if (!container || !homepageSlides.length) return
-
-    const step = getHomeSlideStep()
-    if (!step) return
-
-    // Scroll to index 1 without animation
-    setTimeout(() => {
-      container.scrollTo({ left: step, behavior: 'auto' })
-    }, 0)
-  }, [getHomeSlideStep, homepageSlides.length]) // Run once with dependencies
-
-  // Touch swipe for lightbox
-  const handleLightboxTouchStart = (e: React.TouchEvent) => {
-    setLightboxTouchStart(e.touches[0].clientX)
-  }
-
-  const handleLightboxTouchEnd = (e: React.TouchEvent) => {
-    const touchEnd = e.changedTouches[0].clientX
-    const diff = lightboxTouchStart - touchEnd
-    const threshold = 50
-
-    if (Math.abs(diff) > threshold) {
-      if (diff > 0) {
-        // Swiped left, show next
-        showNextHomepageLightbox()
-      } else {
-        // Swiped right, show previous
-        showPrevHomepageLightbox()
-      }
-    }
   }
 
   return (
