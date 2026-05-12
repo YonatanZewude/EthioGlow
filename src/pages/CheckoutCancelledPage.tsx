@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useClerk } from '@clerk/clerk-react'
 
+const HOME_URL = 'https://www.ethioglow.com'
+
 export default function CheckoutCancelledPage() {
   const { signOut } = useClerk()
   const [status, setStatus] = useState('Returning to the home page...')
@@ -9,7 +11,7 @@ export default function CheckoutCancelledPage() {
   useEffect(() => {
     const endSession = async () => {
       try {
-        await signOut({ redirectUrl: '/' })
+        await signOut({ redirectUrl: HOME_URL })
         setStatus('Your session has been closed because an active subscription is required.')
       } catch {
         setStatus('Payment was cancelled. You can return to the start page.')
@@ -28,12 +30,12 @@ export default function CheckoutCancelledPage() {
         </p>
         <p className="text-sm text-gray-400 mb-8">{status}</p>
         <div className="flex items-center justify-center gap-3">
-          <Link
-            to="/"
+          <a
+            href={HOME_URL}
             className="px-6 py-3 rounded-full bg-brand-500 text-white font-semibold hover:bg-brand-600 transition-all"
           >
             Go to home
-          </Link>
+          </a>
           <Link
             to="/login"
             className="px-6 py-3 rounded-full bg-gray-700 text-white font-semibold hover:bg-gray-600 transition-all"

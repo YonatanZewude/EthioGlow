@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, TouchEvent } from 'react'
 import { useAuth, useClerk, useUser } from '@clerk/clerk-react'
-import { useNavigate } from 'react-router-dom'
 import {
   createCheckoutSession,
   createSupabaseClient,
@@ -11,9 +10,9 @@ import type { Category, ContentItem, Profile } from '../types'
 import Footer from '../components/Footer'
 
 const SWIPE_THRESHOLD = 42
+const HOME_URL = 'https://www.ethioglow.com'
 
 export default function DashboardPage() {
-  const navigate = useNavigate()
   const { userId, getToken, isLoaded } = useAuth()
   const { user } = useUser()
   const { openUserProfile, signOut } = useClerk()
@@ -465,9 +464,9 @@ export default function DashboardPage() {
     setStatus('Returning to the home page...')
 
     try {
-      await signOut({ redirectUrl: '/' })
+      await signOut({ redirectUrl: HOME_URL })
     } catch {
-      navigate('/', { replace: true })
+      window.location.href = HOME_URL
     }
   }
 
