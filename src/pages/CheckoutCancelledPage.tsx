@@ -4,15 +4,15 @@ import { useClerk } from '@clerk/clerk-react'
 
 export default function CheckoutCancelledPage() {
   const { signOut } = useClerk()
-  const [status, setStatus] = useState('Ending your session...')
+  const [status, setStatus] = useState('Returning to the home page...')
 
   useEffect(() => {
     const endSession = async () => {
       try {
-        await signOut()
+        await signOut({ redirectUrl: '/' })
         setStatus('Your session has been closed because an active subscription is required.')
       } catch {
-        setStatus('Payment was cancelled. Please sign in again to continue with subscription checkout.')
+        setStatus('Payment was cancelled. You can return to the start page.')
       }
     }
 
@@ -29,10 +29,10 @@ export default function CheckoutCancelledPage() {
         <p className="text-sm text-gray-400 mb-8">{status}</p>
         <div className="flex items-center justify-center gap-3">
           <Link
-            to="/register"
+            to="/"
             className="px-6 py-3 rounded-full bg-brand-500 text-white font-semibold hover:bg-brand-600 transition-all"
           >
-            Register again
+            Go to home
           </Link>
           <Link
             to="/login"

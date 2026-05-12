@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, TouchEvent } from 'react'
 import { useAuth, useClerk, useUser } from '@clerk/clerk-react'
+import { useNavigate } from 'react-router-dom'
 import {
   createCheckoutSession,
   createSupabaseClient,
@@ -12,10 +13,12 @@ import Footer from '../components/Footer'
 const SWIPE_THRESHOLD = 42
 
 export default function DashboardPage() {
+  const navigate = useNavigate()
   const { userId, getToken, isLoaded } = useAuth()
   const { user } = useUser()
   const { openUserProfile, signOut } = useClerk()
   const accountMenuRef = useRef<HTMLDivElement | null>(null)
+  const checkoutRedirectTimeoutRef = useRef<number | null>(null)
 
   const [supabaseToken, setSupabaseToken] = useState<string | undefined>()
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -301,19 +304,36 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!isLoaded || !userId) {
       setAutoCheckoutTriggered(false)
+      if (checkoutRedirectTimeoutRef.current) {
+        window.clearTimeout(checkoutRedirectTimeoutRef.current)
+        checkoutRedirectTimeoutRef.current = null
+      }
       return
     }
 
     if (!profile) return
     if (hasAccess) {
       setAutoCheckoutTriggered(false)
+      if (checkoutRedirectTimeoutRef.current) {
+        window.clearTimeout(checkoutRedirectTimeoutRef.current)
+        checkoutRedirectTimeoutRef.current = null
+      }
       return
     }
     if (autoCheckoutTriggered || busy) return
 
-    setAutoCheckoutTriggered(true)
     setStatus('Subscription required. Redirecting to Stripe checkout...')
-    void startCheckout()
+    checkoutRedirectTimeoutRef.current = window.setTimeout(() => {
+      setAutoCheckoutTriggered(true)
+      void startCheckout()
+    }, 1200)
+
+    return () => {
+      if (checkoutRedirectTimeoutRef.current) {
+        window.clearTimeout(checkoutRedirectTimeoutRef.current)
+        checkoutRedirectTimeoutRef.current = null
+      }
+    }
   }, [autoCheckoutTriggered, busy, hasAccess, isLoaded, profile, startCheckout, userId])
 
   const openLightbox = (images: ContentItem[], index: number) => {
@@ -435,6 +455,22 @@ export default function DashboardPage() {
     void signOut({ redirectUrl: '/' })
   }
 
+  const handleCancelCheckout = async () => {
+    if (checkoutRedirectTimeoutRef.current) {
+      window.clearTimeout(checkoutRedirectTimeoutRef.current)
+      checkoutRedirectTimeoutRef.current = null
+    }
+
+    setAutoCheckoutTriggered(false)
+    setStatus('Returning to the home page...')
+
+    try {
+      await signOut({ redirectUrl: '/' })
+    } catch {
+      navigate('/', { replace: true })
+    }
+  }
+
   if (shouldHideDashboard) {
     const message =
       status ||
@@ -448,6 +484,15 @@ export default function DashboardPage() {
           <div className="w-16 h-16 mx-auto mb-6 rounded-full border-4 border-brand-500/30 border-t-brand-500 animate-spin" />
           <h1 className="text-3xl font-serif font-bold text-white mb-4">Checking membership</h1>
           <p className="text-gray-300 leading-relaxed">{message}</p>
+          {profile && !hasAccess && (
+            <button
+              type="button"
+              onClick={handleCancelCheckout}
+              className="mt-6 px-6 py-3 rounded-full bg-gray-700 text-white font-semibold hover:bg-gray-600 transition-all"
+            >
+              Cancel and go home
+            </button>
+          )}
         </div>
       </div>
     )
