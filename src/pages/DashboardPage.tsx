@@ -15,6 +15,51 @@ import Footer from '../components/Footer'
 
 const SWIPE_THRESHOLD = 42
 const HOME_URL = 'https://www.ethioglow.com'
+const STORAGE_BUCKET = 'premium-content'
+
+const getCandidateStoragePaths = (rawPath: string) => {
+  const trimmedPath = rawPath.trim()
+
+  if (!trimmedPath) {
+    return []
+  }
+
+  const withoutQuery = trimmedPath.split('?')[0]
+  const normalizedPath = withoutQuery.replace(/^\/+/, '')
+  const bucketPrefix = `${STORAGE_BUCKET}/`
+  const objectPath = normalizedPath.startsWith(bucketPrefix)
+    ? normalizedPath.slice(bucketPrefix.length)
+    : normalizedPath
+
+  const decodedPath = (() => {
+    try {
+      return decodeURIComponent(objectPath)
+    } catch {
+      return objectPath
+    }
+  })()
+
+  const candidates = new Set<string>()
+
+  if (decodedPath) {
+    candidates.add(decodedPath)
+  }
+
+  const publicMarker = `/object/public/${STORAGE_BUCKET}/`
+  const signMarker = `/object/sign/${STORAGE_BUCKET}/`
+
+  const publicIndex = normalizedPath.indexOf(publicMarker)
+  if (publicIndex >= 0) {
+    candidates.add(normalizedPath.slice(publicIndex + publicMarker.length))
+  }
+
+  const signIndex = normalizedPath.indexOf(signMarker)
+  if (signIndex >= 0) {
+    candidates.add(normalizedPath.slice(signIndex + signMarker.length))
+  }
+
+  return Array.from(candidates).filter(Boolean)
+}
 
 export default function DashboardPage() {
   const location = useLocation()
@@ -611,12 +656,25 @@ export default function DashboardPage() {
     setBusy(true)
     setStatus(null)
 
-    const { error: storageError } = await supabase.storage
-      .from('premium-content')
-      .remove([item.file_path])
+    const candidatePaths = getCandidateStoragePaths(item.file_path)
+    let storageDeleteSucceeded = false
+    let lastStorageError: string | null = null
 
-    if (storageError) {
-      setStatus(storageError.message)
+    for (const candidatePath of candidatePaths) {
+      const { error: storageError } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .remove([candidatePath])
+
+      if (!storageError) {
+        storageDeleteSucceeded = true
+        break
+      }
+
+      lastStorageError = storageError.message
+    }
+
+    if (!storageDeleteSucceeded && candidatePaths.length > 0) {
+      setStatus(lastStorageError || 'Could not remove the file from storage.')
       setBusy(false)
       return
     }
