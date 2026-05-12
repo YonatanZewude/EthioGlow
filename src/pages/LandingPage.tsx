@@ -1,5 +1,6 @@
 import { useRef, useCallback, useMemo, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '@clerk/clerk-react'
 import Footer from '../components/Footer'
 import { createSupabaseClient } from '../lib/supabase'
 
@@ -38,12 +39,16 @@ const DEMO_SLIDES: HomepageSlide[] = [
   },
 ]
 
+const AGE_GATE_STORAGE_KEY = 'ethioglow-age-gate'
+
 export default function LandingPage() {
   const navigate = useNavigate()
+  const { isLoaded, userId } = useAuth()
   const supabase = useMemo(() => createSupabaseClient(), [])
   const [homeSlideIndex, setHomeSlideIndex] = useState(1)
   const [homeLightboxIndex, setHomeLightboxIndex] = useState<number | null>(null)
   const [homepageSlides, setHomepageSlides] = useState<HomepageSlide[]>(DEMO_SLIDES)
+  const [ageGateStatus, setAgeGateStatus] = useState<'checking' | 'required' | 'accepted' | 'denied'>('checking')
   const homeFrameRef = useRef<HTMLDivElement | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [startX, setStartX] = useState(0)
@@ -205,6 +210,20 @@ export default function LandingPage() {
   }
 
   useEffect(() => {
+    if (!isLoaded) {
+      return
+    }
+
+    if (userId) {
+      setAgeGateStatus('accepted')
+      return
+    }
+
+    const hasAcceptedAgeGate = window.localStorage.getItem(AGE_GATE_STORAGE_KEY) === 'accepted'
+    setAgeGateStatus(hasAcceptedAgeGate ? 'accepted' : 'required')
+  }, [isLoaded, userId])
+
+  useEffect(() => {
     const loadLandingSlides = async () => {
       const { data, error } = await supabase
         .from('content_items')
@@ -258,6 +277,89 @@ export default function LandingPage() {
       return Math.min(currentIndex, homepageSlides.length - 1)
     })
   }, [homepageSlides])
+
+  const handleAcceptAgeGate = () => {
+    window.localStorage.setItem(AGE_GATE_STORAGE_KEY, 'accepted')
+    setAgeGateStatus('accepted')
+  }
+
+  const handleDeclineAgeGate = () => {
+    window.localStorage.removeItem(AGE_GATE_STORAGE_KEY)
+    setAgeGateStatus('denied')
+  }
+
+  if (!isLoaded || ageGateStatus === 'checking') {
+    return (
+      <div className="min-h-screen bg-linear-to-b from-gray-900 via-slate-900 to-black flex items-center justify-center px-4">
+        <div className="w-14 h-14 rounded-full border-4 border-brand-500/25 border-t-brand-500 animate-spin" />
+      </div>
+    )
+  }
+
+  if (ageGateStatus === 'required') {
+    return (
+      <div className="min-h-screen bg-linear-to-br from-gray-950 via-slate-900 to-gray-900 px-4 py-10 flex items-center justify-center">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(168,85,247,0.16),transparent_32%),radial-gradient(circle_at_bottom,rgba(59,130,246,0.12),transparent_28%)]" />
+        <div className="relative max-w-2xl w-full rounded-[28px] border border-white/10 bg-gray-900/90 backdrop-blur-xl shadow-2xl overflow-hidden">
+          <div className="px-8 py-10 sm:px-12 sm:py-12">
+            <div className="inline-flex items-center gap-2 rounded-full border border-brand-500/30 bg-brand-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-brand-200">
+              Age Verification
+            </div>
+            <h1 className="mt-6 text-4xl sm:text-5xl font-serif font-bold text-white leading-tight">
+              Are you 18 years or older?
+            </h1>
+            <p className="mt-4 text-lg text-gray-300 leading-relaxed max-w-xl">
+              EthioGlow contains adult-oriented premium content. Please confirm that you are at least 18 years old before entering the site.
+            </p>
+
+            <div className="mt-8 grid gap-4 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={handleAcceptAgeGate}
+                className="rounded-2xl bg-white px-6 py-4 text-base font-bold text-gray-900 hover:bg-gray-100 transition-all shadow-lg cursor-pointer"
+              >
+                Yes, I am 18+
+              </button>
+              <button
+                type="button"
+                onClick={handleDeclineAgeGate}
+                className="rounded-2xl border border-white/15 bg-white/5 px-6 py-4 text-base font-semibold text-white hover:bg-white/10 transition-all cursor-pointer"
+              >
+                No, leave this site
+              </button>
+            </div>
+
+            <div className="mt-8 rounded-2xl border border-white/10 bg-black/20 px-5 py-4 text-sm text-gray-400 leading-relaxed">
+              By continuing, you confirm that you meet the legal age requirement in your location and consent to viewing adult-oriented material.
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (ageGateStatus === 'denied') {
+    return (
+      <div className="min-h-screen bg-linear-to-b from-gray-950 via-slate-950 to-black px-4 py-10 flex items-center justify-center">
+        <div className="max-w-xl w-full rounded-[28px] border border-white/10 bg-gray-900/90 backdrop-blur-xl shadow-2xl p-10 text-center">
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10 border border-red-500/20 text-red-300 text-2xl font-bold">
+            18+
+          </div>
+          <h1 className="text-3xl font-serif font-bold text-white">Access Restricted</h1>
+          <p className="mt-4 text-gray-300 leading-relaxed">
+            You must be 18 years or older to enter EthioGlow. The homepage content has been blocked.
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.replace('https://www.google.com')}
+            className="mt-8 rounded-2xl bg-white px-6 py-3 text-sm font-bold text-gray-900 hover:bg-gray-100 transition-all cursor-pointer"
+          >
+            Leave site
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   // Keyboard navigation for lightbox
   useEffect(() => {
