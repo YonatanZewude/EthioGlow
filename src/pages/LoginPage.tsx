@@ -215,7 +215,7 @@ export default function LoginPage() {
                       type="button"
                       onClick={handleForgotPassword}
                       disabled={busy}
-                      className="text-sm text-brand-400 hover:text-brand-300 cursor-pointer transition-colors"
+                      className="text-sm text-white hover:text-gray-200 cursor-pointer transition-colors font-medium"
                     >
                       Forgot password?
                     </button>
