@@ -41,6 +41,31 @@ export default function LoginPage() {
   const [resetPassword, setResetPassword] = useState(false)
   const [resetCode, setResetCode] = useState('')
   const [newPassword, setNewPassword] = useState('')
+  const [needsSecondFactor, setNeedsSecondFactor] = useState(false)
+  const [secondFactorCode, setSecondFactorCode] = useState('')
+
+  const completeSignIn = async (createdSessionId: string) => {
+    if (!setSignInActive) {
+      throw new Error('Could not activate the sign-in session.')
+    }
+
+    await setSignInActive({ session: createdSessionId })
+    const clerkToken = await getToken()
+
+    if (!clerkToken) {
+      throw new Error('Could not get Clerk token after sign-in.')
+    }
+
+    const profile = await syncProfileWithBackend(clerkToken)
+
+    if (profile?.subscription_active || profile?.role === 'admin') {
+      navigate('/dashboard')
+      return
+    }
+
+    const checkoutUrl = await createCheckoutSession(clerkToken)
+    window.location.href = checkoutUrl
+  }
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
@@ -60,28 +85,55 @@ export default function LoginPage() {
       })
 
       if (signInAttempt.status === 'complete' && signInAttempt.createdSessionId) {
-        await setSignInActive({ session: signInAttempt.createdSessionId })
-        const clerkToken = await getToken()
-
-        if (!clerkToken) {
-          throw new Error('Could not get Clerk token after sign-in.')
-        }
-
-        const profile = await syncProfileWithBackend(clerkToken)
-
-        if (profile?.subscription_active || profile?.role === 'admin') {
-          navigate('/dashboard')
-          return
-        }
-
-        const checkoutUrl = await createCheckoutSession(clerkToken)
-        window.location.href = checkoutUrl
-      } else {
-        setStatus('Could not sign in. Please check your credentials.')
+        await completeSignIn(signInAttempt.createdSessionId)
+        return
       }
+
+      if (signInAttempt.status === 'needs_second_factor') {
+        await signInAttempt.prepareSecondFactor({ strategy: 'email_code' })
+        setNeedsSecondFactor(true)
+        setSecondFactorCode('')
+        setStatus('We sent a verification code to your email. Enter it to finish signing in.')
+        setBusy(false)
+        return
+      }
+
+      setStatus('Could not sign in. Please try again.')
     } catch (error) {
       console.error('Clerk sign-in failed', error)
       const message = getAuthErrorMessage(error, 'Auth error')
+      setStatus(message)
+    }
+
+    setBusy(false)
+  }
+
+  const handleSecondFactorSubmit = async (event: FormEvent) => {
+    event.preventDefault()
+    setStatus(null)
+    setBusy(true)
+
+    try {
+      if (!signInLoaded || !signIn) {
+        setStatus('Sign-in is not loaded yet. Please try again.')
+        setBusy(false)
+        return
+      }
+
+      const result = await signIn.attemptSecondFactor({
+        strategy: 'email_code',
+        code: secondFactorCode,
+      })
+
+      if (result.status === 'complete' && result.createdSessionId) {
+        await completeSignIn(result.createdSessionId)
+        return
+      }
+
+      setStatus('Could not verify the code. Please try again.')
+    } catch (error) {
+      console.error('Clerk second-factor verification failed', error)
+      const message = getAuthErrorMessage(error, 'Could not verify the code.')
       setStatus(message)
     }
 
@@ -233,7 +285,7 @@ export default function LoginPage() {
           </div>
 
           <div className="bg-gray-800 rounded-2xl shadow-xl p-8 border border-gray-700">
-            {!resetPassword ? (
+            {!resetPassword && !needsSecondFactor ? (
               <form className="space-y-5" onSubmit={handleSubmit}>
                 <div>
                   <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2">
@@ -322,6 +374,65 @@ export default function LoginPage() {
                   Sign in with Google
                 </button>
               </form>
+            ) : needsSecondFactor ? (
+              <form className="space-y-5" onSubmit={handleSecondFactorSubmit}>
+                <div className="text-center mb-4">
+                  <div className="w-16 h-16 mx-auto mb-4 bg-gray-700 rounded-full flex items-center justify-center">
+                    <svg
+                      className="w-8 h-8 text-brand-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8m-18 8h18a2 2 0 002-2V8a2 2 0 00-2-2H3a2 2 0 00-2 2v6a2 2 0 002 2z"
+                      />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-semibold text-white mb-2">Check your email</h3>
+                  <p className="text-sm text-gray-300">
+                    This device needs an extra verification step. Enter the code sent to <strong>{email}</strong>
+                  </p>
+                </div>
+
+                <div>
+                  <label htmlFor="second-factor-code" className="block text-sm font-medium text-gray-300 mb-2">
+                    Verification code
+                  </label>
+                  <input
+                    id="second-factor-code"
+                    type="text"
+                    placeholder="Enter code from email"
+                    value={secondFactorCode}
+                    onChange={(event) => setSecondFactorCode(event.target.value)}
+                    required
+                    className="w-full px-4 py-3 bg-gray-700 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all placeholder-gray-400"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="w-full py-3 px-6 bg-white text-purple-700 font-bold rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-xl hover:shadow-2xl"
+                >
+                  {busy ? 'Verifying...' : 'Verify and Sign In'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNeedsSecondFactor(false)
+                    setSecondFactorCode('')
+                    setStatus(null)
+                  }}
+                  className="w-full py-2 text-sm text-gray-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  ← Back to sign in
+                </button>
+              </form>
             ) : (
               <form className="space-y-5" onSubmit={handleResetPassword}>
                 <div className="text-center mb-4">
@@ -391,6 +502,8 @@ export default function LoginPage() {
                     setResetPassword(false)
                     setResetCode('')
                     setNewPassword('')
+                    setNeedsSecondFactor(false)
+                    setSecondFactorCode('')
                     setStatus(null)
                   }}
                   className="w-full py-2 text-sm text-gray-400 hover:text-white transition-colors cursor-pointer"
