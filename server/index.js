@@ -132,6 +132,26 @@ const getProfileById = async (userId) => {
   return data
 }
 
+const getOtherActiveSessions = async (sessionId) => {
+  const session = await clerkClient.sessions.getSession(sessionId)
+
+  if (!session?.userId) {
+    throw new Error('Could not find a valid Clerk session')
+  }
+
+  const sessionResponse = await clerkClient.sessions.getSessionList({
+    userId: session.userId,
+    status: 'active',
+    limit: 100,
+  })
+
+  const activeSessions = Array.isArray(sessionResponse?.data)
+    ? sessionResponse.data
+    : []
+
+  return activeSessions.filter((activeSession) => activeSession.id !== sessionId)
+}
+
 app.post(
   '/api/stripe/webhook',
   express.raw({ type: 'application/json' }),
@@ -218,6 +238,54 @@ app.post('/api/auth/sync-profile', async (req, res) => {
   } catch (err) {
     console.error(err)
     return res.status(500).json({ error: 'Could not sync profile' })
+  }
+})
+
+app.post('/api/auth/session-conflict', async (req, res) => {
+  try {
+    const { sessionId } = req.body || {}
+
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Missing sessionId' })
+    }
+
+    const otherSessions = await getOtherActiveSessions(sessionId)
+
+    return res.status(200).json({
+      ok: true,
+      hasOtherSessions: otherSessions.length > 0,
+      otherSessionCount: otherSessions.length,
+    })
+  } catch (err) {
+    console.error(err)
+    return res.status(500).json({ error: 'Could not check active sessions' })
+  }
+})
+
+app.post('/api/auth/resolve-session-conflict', async (req, res) => {
+  try {
+    const { sessionId, action } = req.body || {}
+
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Missing sessionId' })
+    }
+
+    if (action !== 'replace' && action !== 'cancel') {
+      return res.status(400).json({ error: 'Invalid session conflict action' })
+    }
+
+    if (action === 'cancel') {
+      await clerkClient.sessions.revokeSession(sessionId)
+      return res.status(200).json({ ok: true })
+    }
+
+    const otherSessions = await getOtherActiveSessions(sessionId)
+    await Promise.all(otherSessions.map((session) => clerkClient.sessions.revokeSession(session.id)))
+
+    return res.status(200).json({ ok: true, revokedSessionCount: otherSessions.length })
+  } catch (err) {
+    console.error(err)
+    return res.status(500).json({ error: 'Could not resolve active sessions' })
   }
 })
 

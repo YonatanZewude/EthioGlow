@@ -147,6 +147,7 @@ values
   ('Skinny', 'skinny'),
   ('Thick', 'thick'),
   ('Fat', 'fat'),
+  ('Men', 'men'),
   ('New', 'new'),
   ('Popular', 'popular'),
   ('Premium', 'premium'),

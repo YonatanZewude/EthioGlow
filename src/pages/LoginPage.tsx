@@ -2,7 +2,12 @@ import { type FormEvent, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth, useSignIn } from '@clerk/clerk-react'
 import Footer from '../components/Footer'
-import { createCheckoutSession, syncProfileWithBackend } from '../lib/supabase'
+import {
+  checkSessionConflict,
+  createCheckoutSession,
+  resolveSessionConflict,
+  syncProfileWithBackend,
+} from '../lib/supabase'
 
 type ClerkLikeError = {
   errors?: Array<{
@@ -43,6 +48,10 @@ export default function LoginPage() {
   const [newPassword, setNewPassword] = useState('')
   const [needsSecondFactor, setNeedsSecondFactor] = useState(false)
   const [secondFactorCode, setSecondFactorCode] = useState('')
+  const [pendingSessionConflict, setPendingSessionConflict] = useState<{
+    sessionId: string
+    otherSessionCount: number
+  } | null>(null)
 
   const completeSignIn = async (createdSessionId: string) => {
     if (!setSignInActive) {
@@ -67,10 +76,27 @@ export default function LoginPage() {
     window.location.href = checkoutUrl
   }
 
+  const handleCompletedSession = async (createdSessionId: string) => {
+    const conflict = await checkSessionConflict(createdSessionId)
+
+    if (conflict.hasOtherSessions) {
+      setPendingSessionConflict({
+        sessionId: createdSessionId,
+        otherSessionCount: conflict.otherSessionCount,
+      })
+      setStatus(null)
+      setBusy(false)
+      return
+    }
+
+    await completeSignIn(createdSessionId)
+  }
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
     setStatus(null)
     setBusy(true)
+    setPendingSessionConflict(null)
 
     try {
       if (!signInLoaded || !signIn || !setSignInActive) {
@@ -85,7 +111,7 @@ export default function LoginPage() {
       })
 
       if (signInAttempt.status === 'complete' && signInAttempt.createdSessionId) {
-        await completeSignIn(signInAttempt.createdSessionId)
+        await handleCompletedSession(signInAttempt.createdSessionId)
         return
       }
 
@@ -112,6 +138,7 @@ export default function LoginPage() {
     event.preventDefault()
     setStatus(null)
     setBusy(true)
+    setPendingSessionConflict(null)
 
     try {
       if (!signInLoaded || !signIn) {
@@ -126,7 +153,7 @@ export default function LoginPage() {
       })
 
       if (result.status === 'complete' && result.createdSessionId) {
-        await completeSignIn(result.createdSessionId)
+        await handleCompletedSession(result.createdSessionId)
         return
       }
 
@@ -172,6 +199,7 @@ export default function LoginPage() {
 
     setStatus(null)
     setBusy(true)
+    setPendingSessionConflict(null)
 
     try {
       if (!signInLoaded || !signIn) {
@@ -200,6 +228,7 @@ export default function LoginPage() {
     event.preventDefault()
     setStatus(null)
     setBusy(true)
+    setPendingSessionConflict(null)
 
     try {
       if (!signInLoaded || !signIn || !setSignInActive) {
@@ -215,28 +244,54 @@ export default function LoginPage() {
       })
 
       if (result.status === 'complete' && result.createdSessionId) {
-        await setSignInActive({ session: result.createdSessionId })
-        const clerkToken = await getToken()
-
-        if (!clerkToken) {
-          throw new Error('Could not get Clerk token after password reset.')
-        }
-
-        const profile = await syncProfileWithBackend(clerkToken)
-
-        if (profile?.subscription_active || profile?.role === 'admin') {
-          navigate('/dashboard')
-          return
-        }
-
-        const checkoutUrl = await createCheckoutSession(clerkToken)
-        window.location.href = checkoutUrl
+        await handleCompletedSession(result.createdSessionId)
+        return
       } else {
         setStatus('Could not reset password. Please try again.')
       }
     } catch (error) {
       console.error('Clerk password reset failed', error)
       const message = getAuthErrorMessage(error, 'Error resetting password')
+      setStatus(message)
+    }
+
+    setBusy(false)
+  }
+
+  const handleReplaceOtherDevice = async () => {
+    if (!pendingSessionConflict) return
+
+    setStatus(null)
+    setBusy(true)
+
+    try {
+      await resolveSessionConflict(pendingSessionConflict.sessionId, 'replace')
+      const sessionId = pendingSessionConflict.sessionId
+      setPendingSessionConflict(null)
+      await completeSignIn(sessionId)
+      return
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not replace the other device session.'
+      setStatus(message)
+    }
+
+    setBusy(false)
+  }
+
+  const handleKeepOtherDevice = async () => {
+    if (!pendingSessionConflict) return
+
+    setStatus(null)
+    setBusy(true)
+
+    try {
+      await resolveSessionConflict(pendingSessionConflict.sessionId, 'cancel')
+      setPendingSessionConflict(null)
+      setNeedsSecondFactor(false)
+      setSecondFactorCode('')
+      setStatus('You are already signed in on another device. Sign out there first if you want to use this one instead.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not keep the other device session.'
       setStatus(message)
     }
 
@@ -285,7 +340,41 @@ export default function LoginPage() {
           </div>
 
           <div className="bg-gray-800 rounded-2xl shadow-xl p-8 border border-gray-700">
-            {!resetPassword && !needsSecondFactor ? (
+            {pendingSessionConflict ? (
+              <div className="space-y-5">
+                <div className="text-center mb-4">
+                  <div className="w-16 h-16 mx-auto mb-4 bg-amber-500/10 rounded-full border border-amber-500/20 flex items-center justify-center">
+                    <svg className="w-8 h-8 text-amber-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-semibold text-white mb-2">Already signed in somewhere else</h3>
+                  <p className="text-sm text-gray-300 leading-relaxed">
+                    This account is currently active on {pendingSessionConflict.otherSessionCount} other device{pendingSessionConflict.otherSessionCount === 1 ? '' : 's'}.
+                    If you continue here, the other session{pendingSessionConflict.otherSessionCount === 1 ? '' : 's'} will be signed out.
+                  </p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void handleReplaceOtherDevice()}
+                    className="w-full py-3 px-6 bg-white text-purple-700 font-bold rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-xl hover:shadow-2xl"
+                  >
+                    {busy ? 'Switching...' : 'Yes, use this device'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void handleKeepOtherDevice()}
+                    className="w-full py-3 px-6 bg-gray-700 text-white font-semibold rounded-lg hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    Keep other device signed in
+                  </button>
+                </div>
+              </div>
+            ) : !resetPassword && !needsSecondFactor ? (
               <form className="space-y-5" onSubmit={handleSubmit}>
                 <div>
                   <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2">
@@ -424,6 +513,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => {
+                    setPendingSessionConflict(null)
                     setNeedsSecondFactor(false)
                     setSecondFactorCode('')
                     setStatus(null)
@@ -502,6 +592,7 @@ export default function LoginPage() {
                     setResetPassword(false)
                     setResetCode('')
                     setNewPassword('')
+                    setPendingSessionConflict(null)
                     setNeedsSecondFactor(false)
                     setSecondFactorCode('')
                     setStatus(null)

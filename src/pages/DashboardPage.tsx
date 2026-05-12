@@ -175,7 +175,7 @@ export default function DashboardPage() {
   }, [content, selectedCategory, selectedMediaType])
 
   const categoriesForSelectedMedia = useMemo(() => {
-    return categories
+    return categories.filter((category) => category.slug !== 'video')
   }, [categories])
 
   const startCheckout = useCallback(async () => {

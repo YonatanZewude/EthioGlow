@@ -49,6 +49,57 @@ export const syncProfileWithBackend = async (token: string) => {
   return data.profile as SyncedProfile
 }
 
+export const checkSessionConflict = async (sessionId: string) => {
+  const backendUrl = import.meta.env.VITE_STRIPE_BACKEND_URL
+
+  if (!backendUrl) {
+    throw new Error('Backend URL is missing.')
+  }
+
+  const response = await fetch(`${backendUrl}/api/auth/session-conflict`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ sessionId }),
+  })
+
+  const data = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Could not check active sessions')
+  }
+
+  return {
+    hasOtherSessions: Boolean(data.hasOtherSessions),
+    otherSessionCount: Number(data.otherSessionCount || 0),
+  }
+}
+
+export const resolveSessionConflict = async (sessionId: string, action: 'replace' | 'cancel') => {
+  const backendUrl = import.meta.env.VITE_STRIPE_BACKEND_URL
+
+  if (!backendUrl) {
+    throw new Error('Backend URL is missing.')
+  }
+
+  const response = await fetch(`${backendUrl}/api/auth/resolve-session-conflict`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ sessionId, action }),
+  })
+
+  const data = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Could not resolve active sessions')
+  }
+
+  return data as { ok: true; revokedSessionCount?: number }
+}
+
 export const createCheckoutSession = async (token: string) => {
   const backendUrl = import.meta.env.VITE_STRIPE_BACKEND_URL
 
