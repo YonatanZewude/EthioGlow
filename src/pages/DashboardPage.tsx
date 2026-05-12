@@ -40,6 +40,7 @@ export default function DashboardPage() {
 
   const isAdmin = profile?.role === 'admin'
   const hasAccess = Boolean(profile?.subscription_active || isAdmin)
+  const shouldHideDashboard = !isLoaded || !userId || !supabaseToken || !profile || !hasAccess
 
   const ensureProfile = useCallback(
     async (id: string, email: string | null) => {
@@ -401,6 +402,24 @@ export default function DashboardPage() {
     setBusy(false)
   }
 
+  if (shouldHideDashboard) {
+    const message =
+      status ||
+      (profile && !hasAccess
+        ? 'Active membership required. Redirecting to Stripe checkout...'
+        : 'Checking your membership and preparing access...')
+
+    return (
+      <div className="min-h-screen bg-linear-to-b from-gray-800 to-slate-900 flex items-center justify-center px-4">
+        <div className="max-w-lg w-full bg-gray-800 border border-gray-700 rounded-2xl shadow-xl p-8 text-center">
+          <div className="w-16 h-16 mx-auto mb-6 rounded-full border-4 border-brand-500/30 border-t-brand-500 animate-spin" />
+          <h1 className="text-3xl font-serif font-bold text-white mb-4">Checking membership</h1>
+          <p className="text-gray-300 leading-relaxed">{message}</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-linear-to-b from-gray-800 to-slate-900 flex flex-col">
       <header className="border-b border-gray-700 bg-linear-to-r from-gray-900 via-gray-800 to-gray-900 shadow-sm backdrop-blur-sm bg-opacity-95 sticky top-0 z-40">
@@ -440,34 +459,7 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {!hasAccess && (
-          <div className="bg-gradient-to-br from-purple-900/40 via-gray-800 to-indigo-900/40 border-2 border-purple-500/30 rounded-2xl p-8 text-center shadow-2xl">
-            <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-purple-600 to-indigo-600 rounded-full flex items-center justify-center shadow-lg">
-              <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                />
-              </svg>
-            </div>
-            <h2 className="text-2xl font-serif font-bold text-white mb-2">Activate Membership</h2>
-            <p className="text-gray-300 mb-6 max-w-md mx-auto">
-              You need an active subscription to view premium images and videos.
-            </p>
-            <button
-              onClick={startCheckout}
-              disabled={busy}
-              className="px-8 py-3 bg-gradient-to-r from-brand-500 to-brand-600 text-white font-semibold rounded-full hover:from-brand-600 hover:to-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-lg hover:shadow-xl"
-            >
-              Start Subscription
-            </button>
-          </div>
-        )}
-
-        {hasAccess && (
-          <>
+        <>
             <div className="bg-gray-800 rounded-xl shadow-sm border border-gray-700 p-4 mb-6">
               <div className="flex gap-3 flex-wrap">
                 <button
@@ -610,8 +602,7 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
-          </>
-        )}
+        </>
 
         {isAdmin && (
           <div className="bg-gray-800 border-2 border-gray-700 rounded-2xl p-8 shadow-lg mt-8">
