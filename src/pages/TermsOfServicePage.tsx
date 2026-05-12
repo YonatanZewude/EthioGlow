@@ -15,7 +15,7 @@ const termsSections = [
   {
     title: 'Subscriptions And Billing',
     body:
-      'Paid access is offered on a subscription basis. Billing, renewals, cancellations, and payment processing may be handled through Stripe or other approved providers. Access may be restricted if a payment fails, is reversed, or is canceled.',
+      'Paid access is offered on a subscription basis. Billing, renewals, cancellations, and payment processing may be handled through approved third-party providers. Access may be restricted if a payment fails, is reversed, or is canceled.',
   },
   {
     title: 'Access Rules',

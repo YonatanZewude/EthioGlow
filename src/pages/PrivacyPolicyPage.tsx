@@ -5,7 +5,7 @@ const policySections = [
   {
     title: 'Information We Collect',
     body:
-      'We may collect account details such as your email address, authentication information provided through Clerk, subscription status, payment-related customer references, and activity needed to operate your member account securely.',
+      'We may collect account details such as your email address, authentication information provided through third-party identity providers, subscription status, payment-related customer references, and activity needed to operate your member account securely.',
   },
   {
     title: 'How We Use Information',
@@ -15,17 +15,17 @@ const policySections = [
   {
     title: 'Payments And Billing',
     body:
-      'Payments and subscription billing are handled through Stripe. We do not store full payment card details on our own servers. We may store Stripe customer or subscription references in order to manage renewals, cancellations, and account status.',
+      'Payments and subscription billing may be handled through approved third-party payment providers. We do not store full payment card details on our own servers. We may store customer or subscription references in order to manage renewals, cancellations, and account status.',
   },
   {
     title: 'Authentication And Account Security',
     body:
-      'Sign-in and account authentication are provided through Clerk. We use account and session information to protect access, support verification flows, and enforce one-device or subscription-related access controls when required by the service.',
+      'Sign-in and account authentication may be provided through approved third-party identity providers. We use account and session information to protect access, support verification flows, and enforce one-device or subscription-related access controls when required by the service.',
   },
   {
     title: 'Storage And Service Providers',
     body:
-      'We use third-party infrastructure providers, including Supabase for application data and storage, Clerk for identity services, and Stripe for subscription management. These providers process data only as needed to deliver the platform.',
+      'We use third-party infrastructure, identity, hosting, storage, and payment providers to operate the platform. These providers process data only as needed to deliver the service, support account access, manage subscriptions, and maintain security.',
   },
   {
     title: 'Cookies, Local Storage, And Similar Tools',
