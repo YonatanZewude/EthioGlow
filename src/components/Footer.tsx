@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom'
+
 export default function Footer() {
   return (
     <footer className="bg-gray-900 text-white mt-auto">
@@ -21,19 +23,19 @@ export default function Footer() {
             <h4 className="text-lg font-semibold mb-4">Quick Links</h4>
             <ul className="space-y-2">
               <li>
-                <a href="/" className="text-gray-400 hover:text-white transition-colors cursor-pointer">
+                <Link to="/" className="text-gray-400 hover:text-white transition-colors cursor-pointer">
                   Home
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="/login" className="text-gray-400 hover:text-white transition-colors cursor-pointer">
+                <Link to="/login" className="text-gray-400 hover:text-white transition-colors cursor-pointer">
                   Login
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="/register" className="text-gray-400 hover:text-white transition-colors cursor-pointer">
+                <Link to="/register" className="text-gray-400 hover:text-white transition-colors cursor-pointer">
                   Register
-                </a>
+                </Link>
               </li>
             </ul>
           </div>
@@ -43,19 +45,19 @@ export default function Footer() {
             <h4 className="text-lg font-semibold mb-4">Legal</h4>
             <ul className="space-y-2">
               <li>
-                <a href="#" className="text-gray-400 hover:text-white transition-colors cursor-pointer">
+                <Link to="/privacy" className="text-gray-400 hover:text-white transition-colors cursor-pointer">
                   Privacy Policy
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="#" className="text-gray-400 hover:text-white transition-colors cursor-pointer">
+                <Link to="/terms" className="text-gray-400 hover:text-white transition-colors cursor-pointer">
                   Terms of Service
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="#" className="text-gray-400 hover:text-white transition-colors cursor-pointer">
+                <Link to="/copyright" className="text-gray-400 hover:text-white transition-colors cursor-pointer">
                   Copyright Rules
-                </a>
+                </Link>
               </li>
             </ul>
           </div>

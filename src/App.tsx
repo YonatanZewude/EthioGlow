@@ -5,6 +5,9 @@ import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import DashboardPage from './pages/DashboardPage'
 import CheckoutCancelledPage from './pages/CheckoutCancelledPage'
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage'
+import TermsOfServicePage from './pages/TermsOfServicePage'
+import CopyrightRulesPage from './pages/CopyrightRulesPage'
 
 function App() {
   return (
@@ -50,6 +53,9 @@ function App() {
             </>
           }
         />
+        <Route path="/privacy" element={<PrivacyPolicyPage />} />
+        <Route path="/terms" element={<TermsOfServicePage />} />
+        <Route path="/copyright" element={<CopyrightRulesPage />} />
 
         {/* Protected routes */}
         <Route
