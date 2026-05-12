@@ -4,6 +4,31 @@ import { useAuth, useSignIn } from '@clerk/clerk-react'
 import Footer from '../components/Footer'
 import { createCheckoutSession, syncProfileWithBackend } from '../lib/supabase'
 
+type ClerkLikeError = {
+  errors?: Array<{
+    code?: string
+    longMessage?: string
+    message?: string
+  }>
+  message?: string
+}
+
+const getAuthErrorMessage = (error: unknown, fallback: string) => {
+  if (!error || typeof error !== 'object') {
+    return fallback
+  }
+
+  const clerkError = error as ClerkLikeError
+  const firstError = clerkError.errors?.[0]
+  const message = firstError?.longMessage || firstError?.message || clerkError.message
+
+  if (!message) {
+    return fallback
+  }
+
+  return firstError?.code ? `${message} (${firstError.code})` : message
+}
+
 export default function LoginPage() {
   const navigate = useNavigate()
   const { getToken } = useAuth()
@@ -55,10 +80,8 @@ export default function LoginPage() {
         setStatus('Could not sign in. Please check your credentials.')
       }
     } catch (error) {
-      const message =
-        error && typeof error === 'object' && 'errors' in error
-          ? String((error as { errors?: Array<{ longMessage?: string }> }).errors?.[0]?.longMessage || 'Auth error')
-          : 'Auth error'
+      console.error('Clerk sign-in failed', error)
+      const message = getAuthErrorMessage(error, 'Auth error')
       setStatus(message)
     }
 
@@ -82,10 +105,8 @@ export default function LoginPage() {
         redirectUrlComplete: window.location.origin + '/dashboard',
       })
     } catch (error) {
-      const message =
-        error && typeof error === 'object' && 'errors' in error
-          ? String((error as { errors?: Array<{ longMessage?: string }> }).errors?.[0]?.longMessage || 'Google auth error')
-          : 'Google auth error'
+      console.error('Clerk Google auth failed', error)
+      const message = getAuthErrorMessage(error, 'Google auth error')
       setStatus(message)
       setBusy(false)
     }
@@ -115,10 +136,8 @@ export default function LoginPage() {
       setResetPassword(true)
       setStatus('Password reset code sent! Check your email.')
     } catch (error) {
-      const message =
-        error && typeof error === 'object' && 'errors' in error
-          ? String((error as { errors?: Array<{ longMessage?: string }> }).errors?.[0]?.longMessage || 'Error sending reset email')
-          : 'Error sending reset email'
+      console.error('Clerk forgot-password failed', error)
+      const message = getAuthErrorMessage(error, 'Error sending reset email')
       setStatus(message)
     }
 
@@ -164,10 +183,8 @@ export default function LoginPage() {
         setStatus('Could not reset password. Please try again.')
       }
     } catch (error) {
-      const message =
-        error && typeof error === 'object' && 'errors' in error
-          ? String((error as { errors?: Array<{ longMessage?: string }> }).errors?.[0]?.longMessage || 'Error resetting password')
-          : 'Error resetting password'
+      console.error('Clerk password reset failed', error)
+      const message = getAuthErrorMessage(error, 'Error resetting password')
       setStatus(message)
     }
 

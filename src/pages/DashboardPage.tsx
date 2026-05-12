@@ -41,7 +41,7 @@ export default function DashboardPage() {
   const [uploadType, setUploadType] = useState<'image' | 'video'>('image')
   const [uploadCategory, setUploadCategory] = useState('')
   const [uploadPremium, setUploadPremium] = useState(true)
-  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [uploadFiles, setUploadFiles] = useState<File[]>([])
   const [lightboxImages, setLightboxImages] = useState<ContentItem[]>([])
   const [lightboxIndex, setLightboxIndex] = useState(0)
   const [touchStartX, setTouchStartX] = useState<number | null>(null)
@@ -450,45 +450,56 @@ export default function DashboardPage() {
 
   const handleUpload = async (event: FormEvent) => {
     event.preventDefault()
-    if (!isAdmin || !userId || !uploadFile || !uploadCategory) return
+    if (!isAdmin || !userId || !uploadFiles.length || !uploadCategory) return
 
     setBusy(true)
     setStatus(null)
 
-    const filePath = `${userId}/${Date.now()}-${uploadFile.name}`
-    const { error: uploadError } = await supabase.storage
-      .from('premium-content')
-      .upload(filePath, uploadFile)
+    for (const [index, uploadFile] of uploadFiles.entries()) {
+      const filePath = `${userId}/${Date.now()}-${index}-${uploadFile.name}`
+      const { error: uploadError } = await supabase.storage
+        .from('premium-content')
+        .upload(filePath, uploadFile)
 
-    if (uploadError) {
-      setStatus(uploadError.message)
-      setBusy(false)
-      return
-    }
+      if (uploadError) {
+        setStatus(uploadError.message)
+        setBusy(false)
+        return
+      }
 
-    const { error: insertError } = await supabase.from('content_items').insert({
-      title: uploadTitle,
-      description: uploadDescription || null,
-      type: uploadType,
-      category_id: uploadCategory,
-      file_path: filePath,
-      file_url: filePath,
-      is_premium: uploadPremium,
-      created_by: userId,
-    })
+      const title =
+        uploadFiles.length === 1
+          ? uploadTitle
+          : `${uploadTitle} ${index + 1}`
 
-    if (insertError) {
-      setStatus(insertError.message)
-      setBusy(false)
-      return
+      const { error: insertError } = await supabase.from('content_items').insert({
+        title,
+        description: uploadDescription || null,
+        type: uploadType,
+        category_id: uploadCategory,
+        file_path: filePath,
+        file_url: filePath,
+        is_premium: uploadPremium,
+        created_by: userId,
+      })
+
+      if (insertError) {
+        setStatus(insertError.message)
+        setBusy(false)
+        return
+      }
     }
 
     setUploadTitle('')
     setUploadDescription('')
-    setUploadFile(null)
+    setUploadFiles([])
     setUploadCategory('')
     await loadContent()
-    setStatus('Content uploaded.')
+    setStatus(
+      uploadFiles.length === 1
+        ? 'Content uploaded.'
+        : `${uploadFiles.length} files uploaded.`,
+    )
     setBusy(false)
   }
 
@@ -847,11 +858,16 @@ export default function DashboardPage() {
                 <input
                   type="file"
                   accept="image/*,video/*"
-                  onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                  multiple
+                  onChange={(e) => setUploadFiles(Array.from(e.target.files || []))}
                   required
                   className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-600 file:text-white hover:file:bg-purple-700 cursor-pointer"
                 />
-                {uploadFile && <p className="mt-2 text-sm text-gray-300">Selected: {uploadFile.name}</p>}
+                {uploadFiles.length > 0 && (
+                  <p className="mt-2 text-sm text-gray-300">
+                    Selected {uploadFiles.length} file{uploadFiles.length === 1 ? '' : 's'}: {uploadFiles.map((file) => file.name).join(', ')}
+                  </p>
+                )}
               </div>
 
               <button
