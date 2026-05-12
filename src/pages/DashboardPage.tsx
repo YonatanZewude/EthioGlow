@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, TouchEvent } from 'react'
 import { UserButton, useAuth, useUser } from '@clerk/clerk-react'
-import { createSupabaseClient } from '../lib/supabase'
+import { createSupabaseClient, syncProfileWithBackend } from '../lib/supabase'
 import type { Category, ContentItem, Profile } from '../types'
 import Footer from '../components/Footer'
 
@@ -233,8 +233,20 @@ export default function DashboardPage() {
     const syncAuth = async () => {
       setStatus(null)
 
+      const clerkToken = await getToken()
+
+      if (clerkToken) {
+        try {
+          await syncProfileWithBackend(clerkToken)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Could not sync profile.'
+          setStatus(message)
+          return
+        }
+      }
+
       const tokenFromTemplate = await getToken({ template: 'supabase' })
-      const token = tokenFromTemplate || (await getToken())
+      const token = tokenFromTemplate || clerkToken
 
       if (!token) {
         setStatus('Could not get Clerk token for Supabase.')

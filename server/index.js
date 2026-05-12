@@ -186,6 +186,18 @@ app.get('/healthz', (_req, res) => {
   res.status(200).json({ ok: true })
 })
 
+app.post('/api/auth/sync-profile', async (req, res) => {
+  try {
+    const user = await getClerkUserFromAuthorization(req.headers.authorization)
+    await ensureProfile(user.id, user.email)
+
+    return res.status(200).json({ ok: true, userId: user.id })
+  } catch (err) {
+    console.error(err)
+    return res.status(500).json({ error: 'Could not sync profile' })
+  }
+})
+
 app.post('/api/stripe/create-checkout-session', async (req, res) => {
   try {
     const user = await getClerkUserFromAuthorization(req.headers.authorization)

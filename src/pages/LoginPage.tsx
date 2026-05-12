@@ -1,10 +1,12 @@
 import { type FormEvent, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useSignIn } from '@clerk/clerk-react'
+import { useAuth, useSignIn } from '@clerk/clerk-react'
 import Footer from '../components/Footer'
+import { syncProfileWithBackend } from '../lib/supabase'
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const { getToken } = useAuth()
   const { isLoaded: signInLoaded, signIn, setActive: setSignInActive } = useSignIn()
 
   const [email, setEmail] = useState('')
@@ -34,6 +36,13 @@ export default function LoginPage() {
 
       if (signInAttempt.status === 'complete' && signInAttempt.createdSessionId) {
         await setSignInActive({ session: signInAttempt.createdSessionId })
+        const clerkToken = await getToken()
+
+        if (!clerkToken) {
+          throw new Error('Could not get Clerk token after sign-in.')
+        }
+
+        await syncProfileWithBackend(clerkToken)
         setStatus('Signed in successfully.')
         navigate('/dashboard')
       } else {
@@ -130,6 +139,13 @@ export default function LoginPage() {
 
       if (result.status === 'complete' && result.createdSessionId) {
         await setSignInActive({ session: result.createdSessionId })
+        const clerkToken = await getToken()
+
+        if (!clerkToken) {
+          throw new Error('Could not get Clerk token after password reset.')
+        }
+
+        await syncProfileWithBackend(clerkToken)
         setStatus('Password reset successful!')
         navigate('/dashboard')
       } else {

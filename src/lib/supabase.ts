@@ -16,3 +16,25 @@ export const createSupabaseClient = (token?: string) => {
     },
   })
 }
+
+export const syncProfileWithBackend = async (token: string) => {
+  const backendUrl = import.meta.env.VITE_STRIPE_BACKEND_URL
+
+  if (!backendUrl) {
+    throw new Error('Backend URL is missing.')
+  }
+
+  const response = await fetch(`${backendUrl}/api/auth/sync-profile`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  const data = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Could not sync profile')
+  }
+}

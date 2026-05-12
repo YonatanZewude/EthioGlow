@@ -1,10 +1,12 @@
 import { type FormEvent, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useSignUp } from '@clerk/clerk-react'
+import { useAuth, useSignUp } from '@clerk/clerk-react'
 import Footer from '../components/Footer'
+import { syncProfileWithBackend } from '../lib/supabase'
 
 export default function RegisterPage() {
   const navigate = useNavigate()
+  const { getToken } = useAuth()
   const { isLoaded: signUpLoaded, signUp, setActive: setSignUpActive } = useSignUp()
 
   const [email, setEmail] = useState('')
@@ -33,6 +35,13 @@ export default function RegisterPage() {
 
       if (signUpAttempt.status === 'complete' && signUpAttempt.createdSessionId) {
         await setSignUpActive({ session: signUpAttempt.createdSessionId })
+        const clerkToken = await getToken()
+
+        if (!clerkToken) {
+          throw new Error('Could not get Clerk token after sign-up.')
+        }
+
+        await syncProfileWithBackend(clerkToken)
         setPendingVerification(false)
         setVerificationCode('')
         setStatus('Account created successfully.')
@@ -74,6 +83,13 @@ export default function RegisterPage() {
 
       if (result.status === 'complete' && result.createdSessionId) {
         await setSignUpActive({ session: result.createdSessionId })
+        const clerkToken = await getToken()
+
+        if (!clerkToken) {
+          throw new Error('Could not get Clerk token after email verification.')
+        }
+
+        await syncProfileWithBackend(clerkToken)
         setPendingVerification(false)
         setVerificationCode('')
         setStatus('Email verified. Your account is now active.')
