@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, TouchEvent } from 'react'
-import { UserButton, useAuth, useUser } from '@clerk/clerk-react'
+import { useAuth, useClerk, useUser } from '@clerk/clerk-react'
 import {
   createCheckoutSession,
   createSupabaseClient,
@@ -14,6 +14,8 @@ const SWIPE_THRESHOLD = 42
 export default function DashboardPage() {
   const { userId, getToken, isLoaded } = useAuth()
   const { user } = useUser()
+  const { openUserProfile, signOut } = useClerk()
+  const accountMenuRef = useRef<HTMLDivElement | null>(null)
 
   const [supabaseToken, setSupabaseToken] = useState<string | undefined>()
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -25,6 +27,7 @@ export default function DashboardPage() {
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
   const [autoCheckoutTriggered, setAutoCheckoutTriggered] = useState(false)
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false)
 
   const [uploadTitle, setUploadTitle] = useState('')
   const [uploadDescription, setUploadDescription] = useState('')
@@ -276,6 +279,19 @@ export default function DashboardPage() {
   }, [lightboxImages])
 
   useEffect(() => {
+    if (!accountMenuOpen) return
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!accountMenuRef.current?.contains(event.target as Node)) {
+        setAccountMenuOpen(false)
+      }
+    }
+
+    window.addEventListener('mousedown', handlePointerDown)
+    return () => window.removeEventListener('mousedown', handlePointerDown)
+  }, [accountMenuOpen])
+
+  useEffect(() => {
     if (!isLoaded || !userId) {
       setAutoCheckoutTriggered(false)
       return
@@ -402,6 +418,16 @@ export default function DashboardPage() {
     setBusy(false)
   }
 
+  const handleManageAccount = () => {
+    setAccountMenuOpen(false)
+    void openUserProfile()
+  }
+
+  const handleSignOut = () => {
+    setAccountMenuOpen(false)
+    void signOut({ redirectUrl: '/' })
+  }
+
   if (shouldHideDashboard) {
     const message =
       status ||
@@ -440,7 +466,51 @@ export default function DashboardPage() {
                 </span>
               </p>
             </div>
-            <UserButton afterSignOutUrl="/" />
+            <div className="relative" ref={accountMenuRef}>
+              <button
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded={accountMenuOpen}
+                aria-label="Open account menu"
+                onClick={() => setAccountMenuOpen((open) => !open)}
+                className="w-11 h-11 rounded-full overflow-hidden ring-2 ring-white/10 hover:ring-brand-500/60 transition-all cursor-pointer bg-gray-700 flex items-center justify-center"
+              >
+                {user?.imageUrl ? (
+                  <img src={user.imageUrl} alt={user.fullName || user.primaryEmailAddress?.emailAddress || 'User'} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-linear-to-br from-brand-500 to-brand-700 text-white flex items-center justify-center font-semibold">
+                    {(user?.firstName || user?.primaryEmailAddress?.emailAddress || 'U').charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </button>
+
+              {accountMenuOpen && (
+                <div className="absolute right-0 mt-3 w-72 rounded-2xl border border-gray-700 bg-gray-800 shadow-2xl overflow-hidden z-50">
+                  <div className="px-4 py-4 border-b border-gray-700">
+                    <p className="text-sm font-semibold text-white truncate">
+                      {user?.fullName || user?.primaryEmailAddress?.emailAddress || 'Account'}
+                    </p>
+                    <p className="text-sm text-gray-400 truncate">
+                      {user?.primaryEmailAddress?.emailAddress || ''}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleManageAccount}
+                    className="w-full px-4 py-3 text-left text-gray-200 hover:bg-gray-700 transition-colors cursor-pointer"
+                  >
+                    Manage account
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSignOut}
+                    className="w-full px-4 py-3 text-left text-gray-200 hover:bg-gray-700 transition-colors cursor-pointer border-t border-gray-700"
+                  >
+                    Sign out
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </header>
