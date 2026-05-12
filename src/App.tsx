@@ -4,6 +4,7 @@ import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import DashboardPage from './pages/DashboardPage'
+import CheckoutCancelledPage from './pages/CheckoutCancelledPage'
 
 function App() {
   return (
@@ -64,6 +65,7 @@ function App() {
             </>
           }
         />
+        <Route path="/checkout/cancelled" element={<CheckoutCancelledPage />} />
 
         {/* Catch all */}
         <Route path="*" element={<Navigate to="/" replace />} />

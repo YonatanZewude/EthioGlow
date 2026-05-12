@@ -104,6 +104,20 @@ const ensureProfile = async (userId, email) => {
   }
 }
 
+const getProfileById = async (userId) => {
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('id, email, role, subscription_status, subscription_active')
+    .eq('id', userId)
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  return data
+}
+
 app.post(
   '/api/stripe/webhook',
   express.raw({ type: 'application/json' }),
@@ -190,8 +204,9 @@ app.post('/api/auth/sync-profile', async (req, res) => {
   try {
     const user = await getClerkUserFromAuthorization(req.headers.authorization)
     await ensureProfile(user.id, user.email)
+    const profile = await getProfileById(user.id)
 
-    return res.status(200).json({ ok: true, userId: user.id })
+    return res.status(200).json({ ok: true, userId: user.id, profile })
   } catch (err) {
     console.error(err)
     return res.status(500).json({ error: 'Could not sync profile' })
@@ -243,7 +258,7 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
         },
       ],
       success_url: `${process.env.APP_URL}/?checkout=success`,
-      cancel_url: `${process.env.APP_URL}/?checkout=cancelled`,
+      cancel_url: `${process.env.APP_URL}/checkout/cancelled`,
       metadata: {
         clerk_user_id: user.id,
       },

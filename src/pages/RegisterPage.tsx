@@ -2,7 +2,7 @@ import { type FormEvent, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth, useSignUp } from '@clerk/clerk-react'
 import Footer from '../components/Footer'
-import { syncProfileWithBackend } from '../lib/supabase'
+import { createCheckoutSession, syncProfileWithBackend } from '../lib/supabase'
 
 export default function RegisterPage() {
   const navigate = useNavigate()
@@ -41,11 +41,17 @@ export default function RegisterPage() {
           throw new Error('Could not get Clerk token after sign-up.')
         }
 
-        await syncProfileWithBackend(clerkToken)
+        const profile = await syncProfileWithBackend(clerkToken)
         setPendingVerification(false)
         setVerificationCode('')
-        setStatus('Account created successfully.')
-        navigate('/dashboard')
+
+        if (profile?.subscription_active || profile?.role === 'admin') {
+          navigate('/dashboard')
+          return
+        }
+
+        const checkoutUrl = await createCheckoutSession(clerkToken)
+        window.location.href = checkoutUrl
       } else {
         await signUp.prepareEmailAddressVerification({ strategy: 'email_code' })
         setPendingVerification(true)
@@ -89,11 +95,17 @@ export default function RegisterPage() {
           throw new Error('Could not get Clerk token after email verification.')
         }
 
-        await syncProfileWithBackend(clerkToken)
+        const profile = await syncProfileWithBackend(clerkToken)
         setPendingVerification(false)
         setVerificationCode('')
-        setStatus('Email verified. Your account is now active.')
-        navigate('/dashboard')
+
+        if (profile?.subscription_active || profile?.role === 'admin') {
+          navigate('/dashboard')
+          return
+        }
+
+        const checkoutUrl = await createCheckoutSession(clerkToken)
+        window.location.href = checkoutUrl
       } else {
         setStatus('Verification is incomplete. Please try the code again.')
       }

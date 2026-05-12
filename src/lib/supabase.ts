@@ -1,5 +1,13 @@
 import { createClient } from '@supabase/supabase-js'
 
+type SyncedProfile = {
+  id: string
+  email: string | null
+  role: 'admin' | 'paying_user'
+  subscription_status: string
+  subscription_active: boolean
+}
+
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
@@ -37,4 +45,30 @@ export const syncProfileWithBackend = async (token: string) => {
   if (!response.ok) {
     throw new Error(data.error || 'Could not sync profile')
   }
+
+  return data.profile as SyncedProfile
+}
+
+export const createCheckoutSession = async (token: string) => {
+  const backendUrl = import.meta.env.VITE_STRIPE_BACKEND_URL
+
+  if (!backendUrl) {
+    throw new Error('Backend URL is missing.')
+  }
+
+  const response = await fetch(`${backendUrl}/api/stripe/create-checkout-session`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  const data = await response.json().catch(() => ({}))
+
+  if (!response.ok || !data.url) {
+    throw new Error(data.error || 'Checkout failed')
+  }
+
+  return data.url as string
 }

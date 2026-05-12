@@ -2,7 +2,7 @@ import { type FormEvent, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth, useSignIn } from '@clerk/clerk-react'
 import Footer from '../components/Footer'
-import { syncProfileWithBackend } from '../lib/supabase'
+import { createCheckoutSession, syncProfileWithBackend } from '../lib/supabase'
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -42,9 +42,15 @@ export default function LoginPage() {
           throw new Error('Could not get Clerk token after sign-in.')
         }
 
-        await syncProfileWithBackend(clerkToken)
-        setStatus('Signed in successfully.')
-        navigate('/dashboard')
+        const profile = await syncProfileWithBackend(clerkToken)
+
+        if (profile?.subscription_active || profile?.role === 'admin') {
+          navigate('/dashboard')
+          return
+        }
+
+        const checkoutUrl = await createCheckoutSession(clerkToken)
+        window.location.href = checkoutUrl
       } else {
         setStatus('Could not sign in. Please check your credentials.')
       }
@@ -145,9 +151,15 @@ export default function LoginPage() {
           throw new Error('Could not get Clerk token after password reset.')
         }
 
-        await syncProfileWithBackend(clerkToken)
-        setStatus('Password reset successful!')
-        navigate('/dashboard')
+        const profile = await syncProfileWithBackend(clerkToken)
+
+        if (profile?.subscription_active || profile?.role === 'admin') {
+          navigate('/dashboard')
+          return
+        }
+
+        const checkoutUrl = await createCheckoutSession(clerkToken)
+        window.location.href = checkoutUrl
       } else {
         setStatus('Could not reset password. Please try again.')
       }

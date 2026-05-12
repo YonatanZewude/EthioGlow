@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, TouchEvent } from 'react'
 import { UserButton, useAuth, useUser } from '@clerk/clerk-react'
-import { createSupabaseClient, syncProfileWithBackend } from '../lib/supabase'
+import {
+  createCheckoutSession,
+  createSupabaseClient,
+  syncProfileWithBackend,
+} from '../lib/supabase'
 import type { Category, ContentItem, Profile } from '../types'
 import Footer from '../components/Footer'
 
@@ -171,31 +175,15 @@ export default function DashboardPage() {
 
     try {
       const clerkToken = await getToken()
-      const backendUrl = import.meta.env.VITE_STRIPE_BACKEND_URL
 
-      if (!backendUrl) {
-        setStatus('Stripe backend URL is missing.')
+      if (!clerkToken) {
+        setStatus('Could not get Clerk token for checkout.')
         setBusy(false)
         return
       }
 
-      const response = await fetch(`${backendUrl}/api/stripe/create-checkout-session`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${clerkToken || ''}`,
-        },
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        setStatus(data.error || 'Checkout failed')
-        setBusy(false)
-        return
-      }
-
-      window.location.href = data.url
+      const checkoutUrl = await createCheckoutSession(clerkToken)
+      window.location.href = checkoutUrl
     } catch {
       setStatus('Could not start Stripe checkout. Please try again.')
       setBusy(false)
