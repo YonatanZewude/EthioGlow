@@ -1,8 +1,16 @@
 import { useRef, useCallback, useMemo, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Footer from '../components/Footer'
+import { createSupabaseClient } from '../lib/supabase'
 
-const DEMO_SLIDES = [
+type HomepageSlide = {
+  id: string
+  title: string
+  url: string
+  category?: string
+}
+
+const DEMO_SLIDES: HomepageSlide[] = [
   {
     id: 'demo-1',
     title: 'Outdoor Portrait',
@@ -32,16 +40,16 @@ const DEMO_SLIDES = [
 
 export default function LandingPage() {
   const navigate = useNavigate()
+  const supabase = useMemo(() => createSupabaseClient(), [])
   const [homeSlideIndex, setHomeSlideIndex] = useState(1)
   const [homeLightboxIndex, setHomeLightboxIndex] = useState<number | null>(null)
+  const [homepageSlides, setHomepageSlides] = useState<HomepageSlide[]>(DEMO_SLIDES)
   const homeFrameRef = useRef<HTMLDivElement | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [startX, setStartX] = useState(0)
   const [scrollLeft, setScrollLeft] = useState(0)
   const [hasDragged, setHasDragged] = useState(false)
   const [lightboxTouchStart, setLightboxTouchStart] = useState(0)
-
-  const homepageSlides = useMemo(() => DEMO_SLIDES, [])
 
   const activeHomeSlide = useMemo(() => {
     if (homeLightboxIndex === null || !homepageSlides.length) return null
@@ -195,6 +203,61 @@ export default function LandingPage() {
       openHomepageLightbox(index)
     }
   }
+
+  useEffect(() => {
+    const loadLandingSlides = async () => {
+      const { data, error } = await supabase
+        .from('content_items')
+        .select('id, title, file_path, landing_order, created_at')
+        .eq('type', 'image')
+        .eq('show_on_landing', true)
+        .order('landing_order', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: false })
+
+      if (error || !data?.length) {
+        setHomepageSlides(DEMO_SLIDES)
+        return
+      }
+
+      const slides: Array<HomepageSlide | null> = await Promise.all(
+        data.map(async (item) => {
+          const { data: signed } = await supabase.storage
+            .from('premium-content')
+            .createSignedUrl(item.file_path, 3600)
+
+          if (!signed?.signedUrl) {
+            return null
+          }
+
+          return {
+            id: item.id,
+            title: item.title,
+            url: signed.signedUrl,
+            category: 'Featured',
+          } satisfies HomepageSlide
+        }),
+      )
+
+      const validSlides = slides.filter((slide): slide is HomepageSlide => slide !== null)
+      setHomepageSlides(validSlides.length ? validSlides : DEMO_SLIDES)
+    }
+
+    void loadLandingSlides()
+  }, [supabase])
+
+  useEffect(() => {
+    if (!homepageSlides.length) {
+      setHomeSlideIndex(0)
+      setHomeLightboxIndex(null)
+      return
+    }
+
+    setHomeSlideIndex((currentIndex) => Math.min(currentIndex, homepageSlides.length - 1))
+    setHomeLightboxIndex((currentIndex) => {
+      if (currentIndex === null) return null
+      return Math.min(currentIndex, homepageSlides.length - 1)
+    })
+  }, [homepageSlides])
 
   // Keyboard navigation for lightbox
   useEffect(() => {

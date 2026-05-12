@@ -36,6 +36,12 @@ create table if not exists public.content_items (
 alter table public.content_items
 add column if not exists file_url text;
 
+alter table public.content_items
+add column if not exists show_on_landing boolean not null default false;
+
+alter table public.content_items
+add column if not exists landing_order integer;
+
 update public.content_items
 set file_url = file_path
 where file_url is null;
@@ -104,8 +110,18 @@ for select using (public.request_user_id() is not null);
 create policy "content for active users" on public.content_items
 for select using (public.has_active_subscription(public.request_user_id()));
 
+create policy "landing content for public" on public.content_items
+for select using (show_on_landing = true and type = 'image');
+
 create policy "content insert admin only" on public.content_items
 for insert with check (public.is_admin(public.request_user_id()));
+
+create policy "content update admin only" on public.content_items
+for update using (public.is_admin(public.request_user_id()))
+with check (public.is_admin(public.request_user_id()));
+
+create policy "content delete admin only" on public.content_items
+for delete using (public.is_admin(public.request_user_id()));
 
 create policy "favorites own select" on public.favorites
 for select using (public.request_user_id() = user_id);
@@ -152,6 +168,26 @@ for select
 using (
   bucket_id = 'premium-content'
   and public.has_active_subscription(public.request_user_id())
+);
+
+create policy "storage read landing images" on storage.objects
+for select
+using (
+  bucket_id = 'premium-content'
+  and exists (
+    select 1
+    from public.content_items ci
+    where ci.file_path = name
+      and ci.show_on_landing = true
+      and ci.type = 'image'
+  )
+);
+
+create policy "storage delete admin" on storage.objects
+for delete
+using (
+  bucket_id = 'premium-content'
+  and public.is_admin(public.request_user_id())
 );
 
 create policy "storage upload admin" on storage.objects

@@ -24,6 +24,8 @@ export type ContentItem = {
   file_path: string
   file_url: string | null
   is_premium: boolean
+  show_on_landing: boolean
+  landing_order: number | null
   created_at: string
   category_id: string
   categories: Array<{

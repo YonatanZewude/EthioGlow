@@ -125,7 +125,7 @@ export default function DashboardPage() {
     const { data, error } = await supabase
       .from('content_items')
       .select(
-        'id, title, description, type, category_id, file_path, file_url, is_premium, created_at, categories(name, slug), favorites(count)',
+        'id, title, description, type, category_id, file_path, file_url, is_premium, show_on_landing, landing_order, created_at, categories(name, slug), favorites(count)',
       )
       .order('created_at', { ascending: false })
 
@@ -503,6 +503,120 @@ export default function DashboardPage() {
     setBusy(false)
   }
 
+  const handleLandingVisibilityChange = async (item: ContentItem, shouldShow: boolean) => {
+    if (!isAdmin || item.type !== 'image') return
+
+    const nextLandingOrder = shouldShow
+      ? Math.max(
+          0,
+          ...content
+            .filter((contentItem) => contentItem.type === 'image' && contentItem.show_on_landing)
+            .map((contentItem) => contentItem.landing_order ?? 0),
+        ) + 1
+      : null
+
+    setBusy(true)
+    setStatus(null)
+
+    const { error } = await supabase
+      .from('content_items')
+      .update({
+        show_on_landing: shouldShow,
+        landing_order: nextLandingOrder,
+      })
+      .eq('id', item.id)
+
+    if (error) {
+      setStatus(error.message)
+      setBusy(false)
+      return
+    }
+
+    await loadContent()
+    setStatus(
+      shouldShow
+        ? 'Image added to the landing page slideshow.'
+        : 'Image removed from the landing page slideshow.',
+    )
+    setBusy(false)
+  }
+
+  const handleLandingOrderUpdate = async (item: ContentItem, rawValue: string) => {
+    if (!isAdmin || item.type !== 'image' || !item.show_on_landing) return
+
+    const trimmedValue = rawValue.trim()
+    const parsedValue = Number.parseInt(trimmedValue, 10)
+
+    if (!trimmedValue || Number.isNaN(parsedValue) || parsedValue < 1) {
+      setStatus('Landing slide order must be a whole number starting at 1.')
+      return
+    }
+
+    if (parsedValue === item.landing_order) {
+      return
+    }
+
+    setBusy(true)
+    setStatus(null)
+
+    const { error } = await supabase
+      .from('content_items')
+      .update({ landing_order: parsedValue })
+      .eq('id', item.id)
+
+    if (error) {
+      setStatus(error.message)
+      setBusy(false)
+      return
+    }
+
+    await loadContent()
+    setStatus('Landing slide order updated.')
+    setBusy(false)
+  }
+
+  const handleDeleteContent = async (item: ContentItem) => {
+    if (!isAdmin) return
+
+    const confirmed = window.confirm(`Delete "${item.title}" permanently? This will remove the file and the database record.`)
+
+    if (!confirmed) {
+      return
+    }
+
+    setBusy(true)
+    setStatus(null)
+
+    const { error: storageError } = await supabase.storage
+      .from('premium-content')
+      .remove([item.file_path])
+
+    if (storageError) {
+      setStatus(storageError.message)
+      setBusy(false)
+      return
+    }
+
+    const { error: deleteError } = await supabase
+      .from('content_items')
+      .delete()
+      .eq('id', item.id)
+
+    if (deleteError) {
+      setStatus(deleteError.message)
+      setBusy(false)
+      return
+    }
+
+    if (userId) {
+      await loadFavorites(userId)
+    }
+
+    await loadContent()
+    setStatus(`${item.type === 'video' ? 'Video' : 'Image'} deleted.`)
+    setBusy(false)
+  }
+
   const handleManageAccount = () => {
     setAccountMenuOpen(false)
     void openUserProfile()
@@ -738,6 +852,45 @@ export default function DashboardPage() {
                     <h3 className="text-lg font-serif font-bold text-white mb-2">{item.title}</h3>
                     <p className="text-sm text-gray-300 mb-4 line-clamp-2">{item.description}</p>
 
+                    {isAdmin && item.type === 'image' && (
+                      <div className="mb-4 rounded-lg border border-gray-700 bg-gray-900/60 p-3">
+                        <label className="flex items-center justify-between gap-3 text-sm text-gray-200">
+                          <span className="font-medium">Show on landing page</span>
+                          <input
+                            type="checkbox"
+                            checked={item.show_on_landing}
+                            disabled={busy}
+                            onChange={(event) => void handleLandingVisibilityChange(item, event.target.checked)}
+                            className="h-4 w-4 rounded border-gray-500 bg-gray-800 text-brand-500 focus:ring-brand-500"
+                          />
+                        </label>
+
+                        {item.show_on_landing && (
+                          <div className="mt-3 flex items-center gap-3">
+                            <label htmlFor={`landing-order-${item.id}`} className="text-xs font-medium uppercase tracking-wide text-gray-400">
+                              Slide order
+                            </label>
+                            <input
+                              id={`landing-order-${item.id}`}
+                              type="number"
+                              min={1}
+                              step={1}
+                              defaultValue={item.landing_order ?? ''}
+                              disabled={busy}
+                              onBlur={(event) => void handleLandingOrderUpdate(item, event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter') {
+                                  event.preventDefault()
+                                  event.currentTarget.blur()
+                                }
+                              }}
+                              className="w-24 rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="flex items-center justify-between pt-4 border-t border-gray-700">
                       <div className="flex items-center gap-2 text-xs text-gray-400">
                         <span className="px-2 py-1 bg-gray-700 rounded-full font-medium">
@@ -750,12 +903,24 @@ export default function DashboardPage() {
                           {item.favorites?.[0]?.count || 0}
                         </span>
                       </div>
-                      <button
-                        onClick={() => toggleFavorite(item.id)}
-                        className="text-sm font-medium text-brand-500 hover:text-brand-600 transition-colors cursor-pointer"
-                      >
-                        {favorites.has(item.id) ? '❤️ Saved' : '🤍 Save'}
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => toggleFavorite(item.id)}
+                          className="text-sm font-medium text-brand-500 hover:text-brand-600 transition-colors cursor-pointer"
+                        >
+                          {favorites.has(item.id) ? '❤️ Saved' : '🤍 Save'}
+                        </button>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void handleDeleteContent(item)}
+                            className="text-sm font-medium text-red-400 hover:text-red-300 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </article>
