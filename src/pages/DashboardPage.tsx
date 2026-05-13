@@ -72,6 +72,7 @@ export default function DashboardPage() {
   const checkoutRedirectTimeoutRef = useRef<number | null>(null)
   const lightboxWheelLockRef = useRef(0)
   const loadContentRequestRef = useRef(0)
+  const videoPreviewRefs = useRef<Record<string, HTMLVideoElement | null>>({})
 
   const [supabaseToken, setSupabaseToken] = useState<string | undefined>()
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -92,6 +93,7 @@ export default function DashboardPage() {
   const [lightboxIndex, setLightboxIndex] = useState(0)
   const [touchStartX, setTouchStartX] = useState<number | null>(null)
   const [touchStartY, setTouchStartY] = useState<number | null>(null)
+  const [videoPreviewReady, setVideoPreviewReady] = useState<Record<string, boolean>>({})
 
   const supabase = useMemo(() => createSupabaseClient(supabaseToken), [supabaseToken])
 
@@ -313,6 +315,11 @@ export default function DashboardPage() {
     if (!lightboxImages.length) return null
     return lightboxImages[lightboxIndex] || null
   }, [lightboxImages, lightboxIndex])
+
+  useEffect(() => {
+    setVideoPreviewReady({})
+    videoPreviewRefs.current = {}
+  }, [content])
 
   useEffect(() => {
     if (!isLoaded) return
@@ -798,6 +805,44 @@ export default function DashboardPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  const handleVideoPreviewReady = (itemId: string) => {
+    setVideoPreviewReady((current) => {
+      if (current[itemId]) {
+        return current
+      }
+
+      return {
+        ...current,
+        [itemId]: true,
+      }
+    })
+  }
+
+  const playVideoPreview = (itemId: string) => {
+    const videoElement = videoPreviewRefs.current[itemId]
+
+    if (!videoElement) {
+      return
+    }
+
+    const playAttempt = videoElement.play()
+
+    if (playAttempt && typeof playAttempt.catch === 'function') {
+      void playAttempt.catch(() => {})
+    }
+  }
+
+  const stopVideoPreview = (itemId: string) => {
+    const videoElement = videoPreviewRefs.current[itemId]
+
+    if (!videoElement) {
+      return
+    }
+
+    videoElement.pause()
+    videoElement.currentTime = 0
+  }
+
   const handleCancelCheckout = async () => {
     if (checkoutRedirectTimeoutRef.current) {
       window.clearTimeout(checkoutRedirectTimeoutRef.current)
@@ -1050,19 +1095,32 @@ export default function DashboardPage() {
                       <button
                         type="button"
                         onClick={() => openLightbox(mediaContent, index)}
+                        onMouseEnter={() => playVideoPreview(item.id)}
+                        onMouseLeave={() => stopVideoPreview(item.id)}
+                        onFocus={() => playVideoPreview(item.id)}
+                        onBlur={() => stopVideoPreview(item.id)}
                         className="relative flex h-64 w-full items-center justify-center overflow-hidden bg-black text-white transition-all hover:bg-black/35 cursor-pointer"
                         aria-label={`Open video ${item.title}`}
                       >
                         <video
+                          ref={(node) => {
+                            videoPreviewRefs.current[item.id] = node
+                          }}
                           src={item.signedUrl}
-                          preload="auto"
+                          preload="metadata"
                           muted
                           playsInline
-                          autoPlay
                           loop
                           className="h-full w-full object-contain"
+                          onLoadedData={() => handleVideoPreviewReady(item.id)}
                         />
-                        <span className="absolute inset-0 flex items-center justify-center bg-black/20 transition-all hover:bg-black/35">
+                        <span className="absolute inset-0 flex items-center justify-center bg-black/25 transition-all hover:bg-black/35">
+                          {!videoPreviewReady[item.id] && (
+                            <span className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/80 text-sm font-medium text-white">
+                              <span className="h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                              <span>Loading video...</span>
+                            </span>
+                          )}
                           <span className="flex h-16 w-16 items-center justify-center rounded-full border border-white/30 bg-black/55 text-white backdrop-blur-sm shadow-lg">
                             <svg className="ml-1 h-7 w-7" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                               <path d="M8 5.14v13.72c0 .7.76 1.13 1.36.77l10.29-6.86a.9.9 0 000-1.54L9.36 4.37A.9.9 0 008 5.14z" />
