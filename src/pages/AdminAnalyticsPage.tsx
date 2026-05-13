@@ -4,6 +4,8 @@ import { useAdminSession } from '../hooks/useAdminSession'
 import { getVisitorEvents } from '../lib/supabase'
 import type { VisitorEvent } from '../types'
 
+const VISITOR_EVENTS_PER_PAGE = 12
+
 const buildTopCounts = (values: Array<string | null | undefined>, fallbackLabel: string) => {
   const counts = new Map<string, number>()
 
@@ -32,10 +34,15 @@ export default function AdminAnalyticsPage() {
   const { getToken, isAdmin, isLoaded, loadingProfile, setStatus, status } = useAdminSession()
   const [visitorEvents, setVisitorEvents] = useState<VisitorEvent[]>([])
   const [loading, setLoading] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalEvents, setTotalEvents] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
 
   const loadVisitorAnalytics = useCallback(async () => {
     if (!isAdmin) {
       setVisitorEvents([])
+      setTotalEvents(0)
+      setTotalPages(1)
       return
     }
 
@@ -49,15 +56,20 @@ export default function AdminAnalyticsPage() {
         return
       }
 
-      const events = await getVisitorEvents(clerkToken, 100)
-      setVisitorEvents(events)
+      const response = await getVisitorEvents(clerkToken, {
+        limit: VISITOR_EVENTS_PER_PAGE,
+        page: currentPage,
+      })
+      setVisitorEvents(response.events)
+      setTotalEvents(response.pagination.total)
+      setTotalPages(response.pagination.totalPages)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not load visitor analytics.'
       setStatus(message)
     } finally {
       setLoading(false)
     }
-  }, [getToken, isAdmin, setStatus])
+  }, [currentPage, getToken, isAdmin, setStatus])
 
   useEffect(() => {
     if (!isLoaded || loadingProfile || !isAdmin) {
@@ -66,6 +78,14 @@ export default function AdminAnalyticsPage() {
 
     void loadVisitorAnalytics()
   }, [isAdmin, isLoaded, loadVisitorAnalytics, loadingProfile])
+
+  const handlePageChange = (nextPage: number) => {
+    if (nextPage < 1 || nextPage > totalPages || nextPage === currentPage) {
+      return
+    }
+
+    setCurrentPage(nextPage)
+  }
 
   const topVisitorSources = useMemo(
     () => buildTopCounts(visitorEvents.map((event) => event.source), 'Direct').slice(0, 5),
@@ -143,8 +163,8 @@ export default function AdminAnalyticsPage() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
           <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-blue-200">Recent visits</p>
-            <p className="mt-3 text-3xl font-bold text-white">{visitorEvents.length}</p>
-            <p className="mt-2 text-sm text-blue-100/80">Latest 100 homepage visits</p>
+            <p className="mt-3 text-3xl font-bold text-white">{totalEvents}</p>
+            <p className="mt-2 text-sm text-blue-100/80">All tracked homepage visits</p>
           </div>
           <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-emerald-200">Top country</p>
@@ -253,6 +273,33 @@ export default function AdminAnalyticsPage() {
               )}
             </tbody>
           </table>
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-4 text-sm text-gray-300">
+          <p>
+            Showing {visitorEvents.length} visitors on page {currentPage} of {totalPages}
+          </p>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              disabled={currentPage === 1 || loading}
+              onClick={() => handlePageChange(currentPage - 1)}
+              className="rounded-full border border-gray-600 bg-gray-900 px-4 py-2 font-medium text-gray-200 transition-all hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <div className="rounded-full border border-gray-700 bg-gray-800 px-4 py-2 font-medium text-white">
+              {currentPage} / {totalPages}
+            </div>
+            <button
+              type="button"
+              disabled={currentPage === totalPages || loading}
+              onClick={() => handlePageChange(currentPage + 1)}
+              className="rounded-full border border-gray-600 bg-gray-900 px-4 py-2 font-medium text-gray-200 transition-all hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
     </AdminShell>

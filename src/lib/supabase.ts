@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import type { AdminUser, VisitorEvent } from '../types'
+import type { AdminUser, VisitorEventsPage } from '../types'
 
 type SyncedProfile = {
   id: string
@@ -223,14 +223,17 @@ export const trackVisitorVisit = async (payload: {
   }
 }
 
-export const getVisitorEvents = async (token: string, limit = 100) => {
+export const getVisitorEvents = async (token: string, options?: { limit?: number; page?: number }) => {
   const backendUrl = import.meta.env.VITE_STRIPE_BACKEND_URL
 
   if (!backendUrl) {
     throw new Error('Backend URL is missing.')
   }
 
-  const response = await fetch(`${backendUrl}/api/admin/visitor-events?limit=${limit}`, {
+  const limit = options?.limit ?? 100
+  const page = options?.page ?? 1
+
+  const response = await fetch(`${backendUrl}/api/admin/visitor-events?limit=${limit}&page=${page}`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -243,7 +246,15 @@ export const getVisitorEvents = async (token: string, limit = 100) => {
     throw new Error(data.error || 'Could not load visitor events')
   }
 
-  return (data.events || []) as VisitorEvent[]
+  return {
+    events: data.events || [],
+    pagination: data.pagination || {
+      page,
+      limit,
+      total: 0,
+      totalPages: 1,
+    },
+  } as VisitorEventsPage
 }
 
 export const getAdminUsers = async (token: string, subscription: 'all' | 'active' = 'all') => {

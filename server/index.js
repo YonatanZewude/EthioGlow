@@ -710,20 +710,33 @@ app.get('/api/admin/visitor-events', async (req, res) => {
 
     const rawLimit = Number.parseInt(String(req.query.limit || '100'), 10)
     const limit = Number.isFinite(rawLimit) && rawLimit > 0
-      ? Math.min(rawLimit, 500)
+      ? Math.min(rawLimit, 100)
       : 100
+    const rawPage = Number.parseInt(String(req.query.page || '1'), 10)
+    const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1
+    const rangeStart = (page - 1) * limit
+    const rangeEnd = rangeStart + limit - 1
 
-    const { data, error } = await supabaseAdmin
+    const { data, error, count } = await supabaseAdmin
       .from('visitor_events')
-      .select('id, page_path, source, referrer_url, city, country, device_type, device_os, browser, visited_at')
+      .select('id, page_path, source, referrer_url, city, country, device_type, device_os, browser, visited_at', { count: 'exact' })
       .order('visited_at', { ascending: false })
-      .limit(limit)
+      .range(rangeStart, rangeEnd)
 
     if (error) {
       return res.status(500).json({ error: error.message })
     }
 
-    return res.status(200).json({ ok: true, events: data || [] })
+    return res.status(200).json({
+      ok: true,
+      events: data || [],
+      pagination: {
+        page,
+        limit,
+        total: count || 0,
+        totalPages: Math.max(1, Math.ceil((count || 0) / limit)),
+      },
+    })
   } catch (err) {
     console.error(err)
 

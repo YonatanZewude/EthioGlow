@@ -49,6 +49,16 @@ export type VisitorEvent = {
   visited_at: string
 }
 
+export type VisitorEventsPage = {
+  events: VisitorEvent[]
+  pagination: {
+    page: number
+    limit: number
+    total: number
+    totalPages: number
+  }
+}
+
 export type AdminUser = {
   id: string
   email: string | null
