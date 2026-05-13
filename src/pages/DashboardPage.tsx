@@ -17,6 +17,7 @@ import Footer from '../components/Footer'
 const SWIPE_THRESHOLD = 42
 const HOME_URL = 'https://www.ethioglow.com'
 const STORAGE_BUCKET = 'premium-content'
+const CONTENT_ITEMS_PER_PAGE = 22
 
 const buildTopCounts = (values: Array<string | null | undefined>, fallbackLabel: string) => {
   const counts = new Map<string, number>()
@@ -94,6 +95,7 @@ export default function DashboardPage() {
   const { openUserProfile, signOut } = useClerk()
   const accountMenuRef = useRef<HTMLDivElement | null>(null)
   const checkoutRedirectTimeoutRef = useRef<number | null>(null)
+  const lightboxWheelLockRef = useRef(0)
 
   const [supabaseToken, setSupabaseToken] = useState<string | undefined>()
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -102,8 +104,11 @@ export default function DashboardPage() {
   const [favorites, setFavorites] = useState<Set<string>>(new Set())
   const [selectedMediaType, setSelectedMediaType] = useState<'image' | 'video'>('image')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalContentCount, setTotalContentCount] = useState(0)
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
+  const [contentLoading, setContentLoading] = useState(false)
   const [autoCheckoutTriggered, setAutoCheckoutTriggered] = useState(false)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [checkoutStatusSyncing, setCheckoutStatusSyncing] = useState(false)
@@ -119,6 +124,7 @@ export default function DashboardPage() {
   const [lightboxImages, setLightboxImages] = useState<ContentItem[]>([])
   const [lightboxIndex, setLightboxIndex] = useState(0)
   const [touchStartX, setTouchStartX] = useState<number | null>(null)
+  const [touchStartY, setTouchStartY] = useState<number | null>(null)
 
   const supabase = useMemo(() => createSupabaseClient(supabaseToken), [supabaseToken])
 
@@ -196,15 +202,29 @@ export default function DashboardPage() {
   )
 
   const loadContent = useCallback(async () => {
-    const { data, error } = await supabase
+    setContentLoading(true)
+
+    let query = supabase
       .from('content_items')
       .select(
         'id, title, description, type, category_id, file_path, file_url, is_premium, show_on_landing, landing_order, created_at, categories(name, slug), favorites(count)',
+        { count: 'exact' },
       )
+      .eq('type', selectedMediaType)
       .order('created_at', { ascending: false })
+
+    if (selectedCategory !== 'all') {
+      query = query.eq('category_id', selectedCategory)
+    }
+
+    const rangeStart = (currentPage - 1) * CONTENT_ITEMS_PER_PAGE
+    const rangeEnd = rangeStart + CONTENT_ITEMS_PER_PAGE - 1
+
+    const { data, error, count } = await query.range(rangeStart, rangeEnd)
 
     if (error) {
       setStatus(error.message)
+      setContentLoading(false)
       return
     }
 
@@ -222,7 +242,9 @@ export default function DashboardPage() {
     )
 
     setContent(withUrls as unknown as ContentItem[])
-  }, [supabase])
+    setTotalContentCount(count || 0)
+    setContentLoading(false)
+  }, [currentPage, selectedCategory, selectedMediaType, supabase])
 
   const hydrateUserData = useCallback(
     async (id: string, email: string | null) => {
@@ -231,22 +253,21 @@ export default function DashboardPage() {
       await loadCategories()
 
       if (nextProfile?.subscription_active || nextProfile?.role === 'admin') {
-        await Promise.all([loadContent(), loadFavorites(id)])
+        await loadFavorites(id)
       } else {
         setContent([])
+        setTotalContentCount(0)
         setFavorites(new Set())
       }
     },
-    [ensureProfile, loadCategories, loadContent, loadFavorites, loadProfile],
+    [ensureProfile, loadCategories, loadFavorites, loadProfile],
   )
 
   const mediaContent = useMemo(() => {
-    return content.filter(
-      (item) =>
-        item.type === selectedMediaType &&
-        (selectedCategory === 'all' || item.category_id === selectedCategory),
-    )
-  }, [content, selectedCategory, selectedMediaType])
+    return content
+  }, [content])
+
+  const totalPages = Math.max(1, Math.ceil(totalContentCount / CONTENT_ITEMS_PER_PAGE))
 
   const topVisitorSources = useMemo(
     () => buildTopCounts(visitorEvents.map((event) => event.source), 'Direct').slice(0, 5),
@@ -362,10 +383,11 @@ export default function DashboardPage() {
 
     if (!existsInCurrentMedia) {
       setSelectedCategory('all')
+      setCurrentPage(1)
     }
   }, [categoriesForSelectedMedia, selectedCategory])
 
-  const activeLightboxImage = useMemo(() => {
+  const activeLightboxItem = useMemo(() => {
     if (!lightboxImages.length) return null
     return lightboxImages[lightboxIndex] || null
   }, [lightboxImages, lightboxIndex])
@@ -425,6 +447,18 @@ export default function DashboardPage() {
   }, [hydrateUserData, supabaseToken, user?.primaryEmailAddress, userId])
 
   useEffect(() => {
+    if (!profile || !hasAccess || !supabaseToken) return
+
+    void loadContent()
+  }, [hasAccess, loadContent, profile, supabaseToken])
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages)
+    }
+  }, [currentPage, totalPages])
+
+  useEffect(() => {
     if (!isLoaded || !userId || !profile || !isAdmin) {
       setVisitorEvents([])
       return
@@ -441,17 +475,23 @@ export default function DashboardPage() {
         setLightboxImages([])
         setLightboxIndex(0)
       }
-      if (event.key === 'ArrowLeft') {
+      if (activeLightboxItem?.type === 'video' && event.key === 'ArrowUp') {
         setLightboxIndex((prev) => (prev - 1 + lightboxImages.length) % lightboxImages.length)
       }
-      if (event.key === 'ArrowRight') {
+      if (activeLightboxItem?.type === 'video' && event.key === 'ArrowDown') {
+        setLightboxIndex((prev) => (prev + 1) % lightboxImages.length)
+      }
+      if (activeLightboxItem?.type !== 'video' && event.key === 'ArrowLeft') {
+        setLightboxIndex((prev) => (prev - 1 + lightboxImages.length) % lightboxImages.length)
+      }
+      if (activeLightboxItem?.type !== 'video' && event.key === 'ArrowRight') {
         setLightboxIndex((prev) => (prev + 1) % lightboxImages.length)
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [lightboxImages])
+  }, [activeLightboxItem?.type, lightboxImages])
 
   useEffect(() => {
     if (!accountMenuOpen) return
@@ -553,6 +593,7 @@ export default function DashboardPage() {
     setLightboxImages([])
     setLightboxIndex(0)
     setTouchStartX(null)
+    setTouchStartY(null)
   }
 
   const showPrevLightboxImage = () => {
@@ -565,11 +606,31 @@ export default function DashboardPage() {
 
   const handleLightboxTouchStart = (event: TouchEvent<HTMLDivElement>) => {
     setTouchStartX(event.changedTouches[0]?.clientX ?? null)
+    setTouchStartY(event.changedTouches[0]?.clientY ?? null)
   }
 
   const handleLightboxTouchEnd = (event: TouchEvent<HTMLDivElement>) => {
-    if (touchStartX === null) return
+    if (!activeLightboxItem) return
+
     const touchEndX = event.changedTouches[0]?.clientX ?? touchStartX
+    const touchEndY = event.changedTouches[0]?.clientY ?? touchStartY
+
+    if (activeLightboxItem.type === 'video') {
+      if (touchStartY === null) return
+
+      const deltaY = touchEndY - touchStartY
+
+      if (Math.abs(deltaY) > SWIPE_THRESHOLD) {
+        if (deltaY < 0) showNextLightboxImage()
+        if (deltaY > 0) showPrevLightboxImage()
+      }
+
+      setTouchStartX(null)
+      setTouchStartY(null)
+      return
+    }
+
+    if (touchStartX === null) return
     const delta = touchEndX - touchStartX
 
     if (Math.abs(delta) > SWIPE_THRESHOLD) {
@@ -578,6 +639,33 @@ export default function DashboardPage() {
     }
 
     setTouchStartX(null)
+    setTouchStartY(null)
+  }
+
+  const handleLightboxWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    if (activeLightboxItem?.type !== 'video') {
+      return
+    }
+
+    const now = Date.now()
+
+    if (now - lightboxWheelLockRef.current < 450) {
+      return
+    }
+
+    if (Math.abs(event.deltaY) < 24) {
+      return
+    }
+
+    lightboxWheelLockRef.current = now
+    event.preventDefault()
+
+    if (event.deltaY > 0) {
+      showNextLightboxImage()
+      return
+    }
+
+    showPrevLightboxImage()
   }
 
   const toggleFavorite = async (contentId: string) => {
@@ -833,6 +921,25 @@ export default function DashboardPage() {
     void signOut({ redirectUrl: '/' })
   }
 
+  const handleMediaTypeChange = (nextMediaType: 'image' | 'video') => {
+    setSelectedMediaType(nextMediaType)
+    setCurrentPage(1)
+  }
+
+  const handleCategoryChange = (nextCategory: string) => {
+    setSelectedCategory(nextCategory)
+    setCurrentPage(1)
+  }
+
+  const handlePageChange = (nextPage: number) => {
+    if (nextPage < 1 || nextPage > totalPages || nextPage === currentPage) {
+      return
+    }
+
+    setCurrentPage(nextPage)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   const handleCancelCheckout = async () => {
     if (checkoutRedirectTimeoutRef.current) {
       window.clearTimeout(checkoutRedirectTimeoutRef.current)
@@ -983,7 +1090,7 @@ export default function DashboardPage() {
                 <button
                   type="button"
                   className={`px-6 py-2.5 rounded-lg font-medium transition-all cursor-pointer ${selectedMediaType === 'image' ? 'bg-brand-500 text-white shadow-md' : 'bg-gray-900 text-gray-200 border border-gray-600 hover:bg-gray-700'}`}
-                  onClick={() => setSelectedMediaType('image')}
+                  onClick={() => handleMediaTypeChange('image')}
                 >
                   <span className="flex items-center gap-2">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1000,7 +1107,7 @@ export default function DashboardPage() {
                 <button
                   type="button"
                   className={`px-6 py-2.5 rounded-lg font-medium transition-all cursor-pointer ${selectedMediaType === 'video' ? 'bg-brand-500 text-white shadow-md' : 'bg-gray-900 text-gray-200 border border-gray-600 hover:bg-gray-700'}`}
-                  onClick={() => setSelectedMediaType('video')}
+                  onClick={() => handleMediaTypeChange('video')}
                 >
                   <span className="flex items-center gap-2">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1022,7 +1129,7 @@ export default function DashboardPage() {
                 <button
                   type="button"
                   className={`px-4 py-2 rounded-full text-sm font-medium transition-all cursor-pointer ${selectedCategory === 'all' ? 'bg-brand-500 text-white shadow-md' : 'bg-gray-900 text-gray-200 border border-gray-600 hover:bg-gray-700'}`}
-                  onClick={() => setSelectedCategory('all')}
+                  onClick={() => handleCategoryChange('all')}
                 >
                   All categories
                 </button>
@@ -1031,12 +1138,23 @@ export default function DashboardPage() {
                     key={category.id}
                     type="button"
                     className={`px-4 py-2 rounded-full text-sm font-medium transition-all cursor-pointer ${selectedCategory === category.id ? 'bg-brand-500 text-white shadow-md' : 'bg-gray-900 text-gray-200 border border-gray-600 hover:bg-gray-700'}`}
-                    onClick={() => setSelectedCategory(category.id)}
+                    onClick={() => handleCategoryChange(category.id)}
                   >
                     {category.name}
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className="mb-4 flex items-center justify-between gap-4 text-sm text-gray-400">
+              <p>
+                {contentLoading
+                  ? 'Loading media...'
+                  : `Showing ${mediaContent.length} of ${totalContentCount} ${selectedMediaType === 'image' ? 'images' : 'videos'}`}
+              </p>
+              <p>
+                Page {currentPage} of {totalPages}
+              </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -1047,14 +1165,27 @@ export default function DashboardPage() {
                 >
                   <div className="relative">
                     {selectedMediaType === 'video' ? (
-                      <div className="flex h-64 items-center justify-center bg-black">
+                      <button
+                        type="button"
+                        onClick={() => openLightbox(mediaContent, index)}
+                        className="relative flex h-64 w-full items-center justify-center overflow-hidden bg-black text-white transition-all hover:bg-black/35 cursor-pointer"
+                        aria-label={`Open video ${item.title}`}
+                      >
                         <video
                           src={item.signedUrl}
-                          controls
                           preload="metadata"
+                          muted
+                          playsInline
                           className="h-full w-full object-contain"
                         />
-                      </div>
+                        <span className="absolute inset-0 flex items-center justify-center bg-black/20 transition-all hover:bg-black/35">
+                          <span className="flex h-16 w-16 items-center justify-center rounded-full border border-white/30 bg-black/55 text-white backdrop-blur-sm shadow-lg">
+                            <svg className="ml-1 h-7 w-7" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                              <path d="M8 5.14v13.72c0 .7.76 1.13 1.36.77l10.29-6.86a.9.9 0 000-1.54L9.36 4.37A.9.9 0 008 5.14z" />
+                            </svg>
+                          </span>
+                        </span>
+                      </button>
                     ) : (
                       <button
                         type="button"
@@ -1173,6 +1304,32 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
+
+            {totalContentCount > CONTENT_ITEMS_PER_PAGE && (
+              <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+                <button
+                  type="button"
+                  disabled={currentPage === 1 || contentLoading}
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  className="rounded-full border border-gray-600 bg-gray-900 px-5 py-2 text-sm font-medium text-gray-200 transition-all hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Previous
+                </button>
+
+                <div className="rounded-full border border-gray-700 bg-gray-800 px-5 py-2 text-sm font-medium text-white">
+                  {currentPage} / {totalPages}
+                </div>
+
+                <button
+                  type="button"
+                  disabled={currentPage === totalPages || contentLoading}
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  className="rounded-full border border-gray-600 bg-gray-900 px-5 py-2 text-sm font-medium text-gray-200 transition-all hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            )}
         </>
 
         {isAdmin && (
@@ -1475,12 +1632,12 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {activeLightboxImage && (
+        {activeLightboxItem && (
           <section
             className="lightbox"
             role="dialog"
             aria-modal="true"
-            aria-label="Image viewer"
+            aria-label={activeLightboxItem.type === 'video' ? 'Video viewer' : 'Image viewer'}
             onClick={closeLightbox}
           >
             <div
@@ -1488,6 +1645,7 @@ export default function DashboardPage() {
               onClick={(event) => event.stopPropagation()}
               onTouchStart={handleLightboxTouchStart}
               onTouchEnd={handleLightboxTouchEnd}
+              onWheel={handleLightboxWheel}
             >
               <button
                 type="button"
@@ -1497,29 +1655,63 @@ export default function DashboardPage() {
               >
                 ×
               </button>
-              <button
-                type="button"
-                className="lightboxNav left cursor-pointer"
-                onClick={showPrevLightboxImage}
-                aria-label="Previous image"
-              >
-                ←
-              </button>
-              <img
-                src={activeLightboxImage.signedUrl}
-                alt={activeLightboxImage.title}
-                className="lightboxImage"
-              />
-              <button
-                type="button"
-                className="lightboxNav right cursor-pointer"
-                onClick={showNextLightboxImage}
-                aria-label="Next image"
-              >
-                →
-              </button>
+              {activeLightboxItem.type === 'video' ? (
+                <>
+                  <button
+                    type="button"
+                    className="absolute left-1/2 top-6 z-10 -translate-x-1/2 rounded-full border border-white/20 bg-black/55 px-4 py-2 text-sm font-semibold text-white backdrop-blur-sm cursor-pointer"
+                    onClick={showPrevLightboxImage}
+                    aria-label="Previous video"
+                  >
+                    Up for previous
+                  </button>
+                  <div className="flex h-[85vh] w-full items-center justify-center bg-black">
+                    <video
+                      key={activeLightboxItem.id}
+                      src={activeLightboxItem.signedUrl}
+                      controls
+                      autoPlay
+                      playsInline
+                      preload="metadata"
+                      className="h-full max-h-[85vh] w-auto max-w-full object-contain"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="absolute bottom-20 left-1/2 z-10 -translate-x-1/2 rounded-full border border-white/20 bg-black/55 px-4 py-2 text-sm font-semibold text-white backdrop-blur-sm cursor-pointer"
+                    onClick={showNextLightboxImage}
+                    aria-label="Next video"
+                  >
+                    Down for next
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="lightboxNav left cursor-pointer"
+                    onClick={showPrevLightboxImage}
+                    aria-label="Previous image"
+                  >
+                    ←
+                  </button>
+                  <img
+                    src={activeLightboxItem.signedUrl}
+                    alt={activeLightboxItem.title}
+                    className="lightboxImage"
+                  />
+                  <button
+                    type="button"
+                    className="lightboxNav right cursor-pointer"
+                    onClick={showNextLightboxImage}
+                    aria-label="Next image"
+                  >
+                    →
+                  </button>
+                </>
+              )}
               <div className="lightboxCaption">
-                <strong>{activeLightboxImage.title}</strong>
+                <strong>{activeLightboxItem.title}</strong>
                 <span>
                   {lightboxIndex + 1} / {lightboxImages.length}
                 </span>
