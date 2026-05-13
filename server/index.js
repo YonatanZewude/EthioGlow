@@ -735,6 +735,39 @@ app.get('/api/admin/visitor-events', async (req, res) => {
   }
 })
 
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    await getAdminUserFromAuthorization(req.headers.authorization)
+
+    const subscriptionFilter = String(req.query.subscription || 'all').toLowerCase()
+    const query = supabaseAdmin
+      .from('profiles')
+      .select('id, email, role, subscription_status, subscription_active, created_at')
+      .order('subscription_active', { ascending: false })
+      .order('created_at', { ascending: false })
+
+    const filteredQuery = subscriptionFilter === 'active'
+      ? query.eq('subscription_active', true)
+      : query
+
+    const { data, error } = await filteredQuery
+
+    if (error) {
+      return res.status(500).json({ error: error.message })
+    }
+
+    return res.status(200).json({ ok: true, users: data || [] })
+  } catch (err) {
+    console.error(err)
+
+    if (err?.statusCode === 403) {
+      return res.status(403).json({ error: err.message })
+    }
+
+    return res.status(500).json({ error: 'Could not load admin users' })
+  }
+})
+
 app.post('/api/stripe/create-checkout-session', async (req, res) => {
   try {
     const user = await getClerkUserFromAuthorization(req.headers.authorization)

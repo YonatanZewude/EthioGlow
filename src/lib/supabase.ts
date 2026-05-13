@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import type { VisitorEvent } from '../types'
+import type { AdminUser, VisitorEvent } from '../types'
 
 type SyncedProfile = {
   id: string
@@ -244,4 +244,27 @@ export const getVisitorEvents = async (token: string, limit = 100) => {
   }
 
   return (data.events || []) as VisitorEvent[]
+}
+
+export const getAdminUsers = async (token: string, subscription: 'all' | 'active' = 'all') => {
+  const backendUrl = import.meta.env.VITE_STRIPE_BACKEND_URL
+
+  if (!backendUrl) {
+    throw new Error('Backend URL is missing.')
+  }
+
+  const response = await fetch(`${backendUrl}/api/admin/users?subscription=${subscription}`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  const data = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Could not load admin users')
+  }
+
+  return (data.users || []) as AdminUser[]
 }

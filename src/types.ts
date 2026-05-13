@@ -48,3 +48,12 @@ export type VisitorEvent = {
   browser: string | null
   visited_at: string
 }
+
+export type AdminUser = {
+  id: string
+  email: string | null
+  role: Role
+  subscription_status: string
+  subscription_active: boolean
+  created_at: string
+}

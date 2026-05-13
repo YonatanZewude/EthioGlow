@@ -6,6 +6,7 @@ import RegisterPage from './pages/RegisterPage'
 import AdminAnalyticsPage from './pages/AdminAnalyticsPage'
 import AdminPage from './pages/AdminPage'
 import AdminUploadPage from './pages/AdminUploadPage'
+import AdminUsersPage from './pages/AdminUsersPage'
 import DashboardPage from './pages/DashboardPage'
 import CheckoutCancelledPage from './pages/CheckoutCancelledPage'
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage'
@@ -106,6 +107,19 @@ function App() {
             <>
               <SignedIn>
                 <AdminUploadPage />
+              </SignedIn>
+              <SignedOut>
+                <Navigate to="/login" replace />
+              </SignedOut>
+            </>
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            <>
+              <SignedIn>
+                <AdminUsersPage />
               </SignedIn>
               <SignedOut>
                 <Navigate to="/login" replace />
