@@ -173,7 +173,6 @@ export default function DashboardPage() {
     loadContentRequestRef.current = requestId
 
     setContentLoading(true)
-    setContent([])
 
     let query = supabase
       .from('content_items')
