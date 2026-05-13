@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import type { VisitorEvent } from '../types'
 
 type SyncedProfile = {
   id: string
@@ -195,4 +196,52 @@ export const createBillingPortalSession = async (token: string) => {
   }
 
   return data.url as string
+}
+
+export const trackVisitorVisit = async (payload: {
+  pagePath: string
+  referrer?: string | null
+  utmSource?: string | null
+}) => {
+  const backendUrl = import.meta.env.VITE_STRIPE_BACKEND_URL
+
+  if (!backendUrl) {
+    throw new Error('Backend URL is missing.')
+  }
+
+  const response = await fetch(`${backendUrl}/api/analytics/track-visit`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}))
+    throw new Error(data.error || 'Could not track visitor visit')
+  }
+}
+
+export const getVisitorEvents = async (token: string, limit = 100) => {
+  const backendUrl = import.meta.env.VITE_STRIPE_BACKEND_URL
+
+  if (!backendUrl) {
+    throw new Error('Backend URL is missing.')
+  }
+
+  const response = await fetch(`${backendUrl}/api/admin/visitor-events?limit=${limit}`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  const data = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Could not load visitor events')
+  }
+
+  return (data.events || []) as VisitorEvent[]
 }

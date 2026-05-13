@@ -2,7 +2,7 @@ import { useRef, useCallback, useMemo, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@clerk/clerk-react'
 import Footer from '../components/Footer'
-import { createSupabaseClient } from '../lib/supabase'
+import { createSupabaseClient, trackVisitorVisit } from '../lib/supabase'
 
 type HomepageSlide = {
   id: string
@@ -11,43 +11,16 @@ type HomepageSlide = {
   category?: string
 }
 
-const DEMO_SLIDES: HomepageSlide[] = [
-  {
-    id: 'demo-1',
-    title: 'Outdoor Portrait',
-    url: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=700&q=80',
-  },
-  {
-    id: 'demo-2',
-    title: 'Indoor Editorial',
-    url: 'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?auto=format&fit=crop&w=700&q=80',
-  },
-  {
-    id: 'demo-3',
-    title: 'In nature Light',
-    url: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=700&q=80',
-  },
-  {
-    id: 'demo-4',
-    title: 'On the beach Vibe',
-    url: 'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?auto=format&fit=crop&w=700&q=80',
-  },
-  {
-    id: 'demo-5',
-    title: 'Studio Motion',
-    url: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=700&q=80',
-  },
-]
-
 const AGE_GATE_STORAGE_KEY = 'ethioglow-age-gate'
+const VISIT_TRACK_STORAGE_KEY = 'ethioglow-last-visit-track'
 
 export default function LandingPage() {
   const navigate = useNavigate()
   const { isLoaded, userId } = useAuth()
   const supabase = useMemo(() => createSupabaseClient(), [])
-  const [homeSlideIndex, setHomeSlideIndex] = useState(1)
+  const [homeSlideIndex, setHomeSlideIndex] = useState(0)
   const [homeLightboxIndex, setHomeLightboxIndex] = useState<number | null>(null)
-  const [homepageSlides, setHomepageSlides] = useState<HomepageSlide[]>(DEMO_SLIDES)
+  const [homepageSlides, setHomepageSlides] = useState<HomepageSlide[]>([])
   const [ageGateStatus, setAgeGateStatus] = useState<'checking' | 'required' | 'accepted' | 'denied'>('checking')
   const homeFrameRef = useRef<HTMLDivElement | null>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -224,6 +197,33 @@ export default function LandingPage() {
   }, [isLoaded, userId])
 
   useEffect(() => {
+    if (!isLoaded) {
+      return
+    }
+
+    const pageKey = `${window.location.pathname}${window.location.search}`
+    const storageKey = `${VISIT_TRACK_STORAGE_KEY}:${pageKey}`
+    const now = Date.now()
+    const lastTrackedAt = Number(window.sessionStorage.getItem(storageKey) || '0')
+
+    if (Number.isFinite(lastTrackedAt) && now - lastTrackedAt < 5000) {
+      return
+    }
+
+    window.sessionStorage.setItem(storageKey, String(now))
+
+    const searchParams = new URLSearchParams(window.location.search)
+
+    void trackVisitorVisit({
+      pagePath: pageKey,
+      referrer: document.referrer || null,
+      utmSource: searchParams.get('utm_source'),
+    }).catch((error) => {
+      console.warn('Could not track visitor analytics.', error)
+    })
+  }, [isLoaded])
+
+  useEffect(() => {
     const loadLandingSlides = async () => {
       const { data, error } = await supabase
         .from('content_items')
@@ -234,7 +234,7 @@ export default function LandingPage() {
         .order('created_at', { ascending: false })
 
       if (error || !data?.length) {
-        setHomepageSlides(DEMO_SLIDES)
+        setHomepageSlides([])
         return
       }
 
@@ -258,7 +258,7 @@ export default function LandingPage() {
       )
 
       const validSlides = slides.filter((slide): slide is HomepageSlide => slide !== null)
-      setHomepageSlides(validSlides.length ? validSlides : DEMO_SLIDES)
+      setHomepageSlides(validSlides)
     }
 
     void loadLandingSlides()
@@ -306,7 +306,7 @@ export default function LandingPage() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [homeLightboxIndex, homepageSlides.length])
 
-  // Initial scroll to index 1 on mount
+  // Keep the first selected slide visible after the list loads.
   useEffect(() => {
     const container = homeFrameRef.current
     if (!container || !homepageSlides.length) return
@@ -314,9 +314,8 @@ export default function LandingPage() {
     const step = getHomeSlideStep()
     if (!step) return
 
-    // Scroll to index 1 without animation
     setTimeout(() => {
-      container.scrollTo({ left: step, behavior: 'auto' })
+      container.scrollTo({ left: 0, behavior: 'auto' })
     }, 0)
   }, [getHomeSlideStep, homepageSlides.length]) // Run once with dependencies
 
@@ -462,6 +461,7 @@ export default function LandingPage() {
               className="swiper-nav-btn swiper-nav-prev"
               onClick={showPrevHomepageSlide}
               aria-label="Previous image"
+              disabled={!homepageSlides.length}
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
@@ -483,39 +483,45 @@ export default function LandingPage() {
                 onTouchEnd={handleTouchEnd}
                 style={{ cursor: 'grab', userSelect: 'none' }}
               >
-                {homepageSlides.map((slide, index) => (
-                  <article
-                    key={slide.id}
-                    className={`swiper-slide ${index === homeSlideIndex ? 'swiper-slide-active' : ''}`}
-                  >
-                    <div className="swiper-slide-inner">
-                      <button
-                        type="button"
-                        className="swiper-image-btn"
-                        onClick={() => handleSlideClick(index)}
-                        aria-label={`Open image ${slide.title}`}
-                      >
-                        <div className="swiper-image-wrapper">
-                          <img
-                            src={slide.url}
-                            alt={slide.title}
-                            loading="lazy"
-                            className="swiper-image"
-                          />
-                          <div className="swiper-overlay">
-                            <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m0 0v6m0-6h6m-6 0H4" />
-                            </svg>
+                {homepageSlides.length ? (
+                  homepageSlides.map((slide, index) => (
+                    <article
+                      key={slide.id}
+                      className={`swiper-slide ${index === homeSlideIndex ? 'swiper-slide-active' : ''}`}
+                    >
+                      <div className="swiper-slide-inner">
+                        <button
+                          type="button"
+                          className="swiper-image-btn"
+                          onClick={() => handleSlideClick(index)}
+                          aria-label={`Open image ${slide.title}`}
+                        >
+                          <div className="swiper-image-wrapper">
+                            <img
+                              src={slide.url}
+                              alt={slide.title}
+                              loading="lazy"
+                              className="swiper-image"
+                            />
+                            <div className="swiper-overlay">
+                              <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m0 0v6m0-6h6m-6 0H4" />
+                              </svg>
+                            </div>
                           </div>
-                        </div>
-                        <div className="swiper-slide-info">
-                          <h3 className="swiper-slide-title">{slide.title}</h3>
-                          <p className="swiper-slide-category">{'category' in slide ? String(slide.category) : 'Gallery'}</p>
-                        </div>
-                      </button>
-                    </div>
-                  </article>
-                ))}
+                          <div className="swiper-slide-info">
+                            <h3 className="swiper-slide-title">{slide.title}</h3>
+                            <p className="swiper-slide-category">{slide.category || 'Gallery'}</p>
+                          </div>
+                        </button>
+                      </div>
+                    </article>
+                  ))
+                ) : (
+                  <div className="mx-auto flex min-h-90 w-full max-w-3xl items-center justify-center rounded-4xl border border-white/10 bg-white/5 px-6 text-center text-gray-300">
+                    No landing page images have been selected in the admin dashboard yet.
+                  </div>
+                )}
               </div>
             </div>
 
@@ -524,6 +530,7 @@ export default function LandingPage() {
               className="swiper-nav-btn swiper-nav-next"
               onClick={showNextHomepageSlide}
               aria-label="Next image"
+              disabled={!homepageSlides.length}
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
@@ -551,7 +558,7 @@ export default function LandingPage() {
               ))}
             </div>
             <div className="text-sm font-medium text-gray-300">
-              {homeSlideIndex + 1} / {homepageSlides.length}
+              {homepageSlides.length ? `${homeSlideIndex + 1} / ${homepageSlides.length}` : '0 / 0'}
             </div>
           </div>
         </div>

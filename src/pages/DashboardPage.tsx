@@ -7,15 +7,40 @@ import {
   createCheckoutSession,
   createSupabaseClient,
   deactivateAccount,
+  getVisitorEvents,
   syncCheckoutSessionWithBackend,
   syncProfileWithBackend,
 } from '../lib/supabase'
-import type { Category, ContentItem, Profile } from '../types'
+import type { Category, ContentItem, Profile, VisitorEvent } from '../types'
 import Footer from '../components/Footer'
 
 const SWIPE_THRESHOLD = 42
 const HOME_URL = 'https://www.ethioglow.com'
 const STORAGE_BUCKET = 'premium-content'
+
+const buildTopCounts = (values: Array<string | null | undefined>, fallbackLabel: string) => {
+  const counts = new Map<string, number>()
+
+  for (const value of values) {
+    const key = value?.trim() || fallbackLabel
+    counts.set(key, (counts.get(key) || 0) + 1)
+  }
+
+  return Array.from(counts.entries()).sort((left, right) => right[1] - left[1])
+}
+
+const formatVisitTime = (value: string) => {
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return new Intl.DateTimeFormat('sv-SE', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(date)
+}
 
 const getCandidateStoragePaths = (rawPath: string) => {
   const trimmedPath = rawPath.trim()
@@ -82,6 +107,8 @@ export default function DashboardPage() {
   const [autoCheckoutTriggered, setAutoCheckoutTriggered] = useState(false)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [checkoutStatusSyncing, setCheckoutStatusSyncing] = useState(false)
+  const [visitorEvents, setVisitorEvents] = useState<VisitorEvent[]>([])
+  const [visitorAnalyticsLoading, setVisitorAnalyticsLoading] = useState(false)
 
   const [uploadTitle, setUploadTitle] = useState('')
   const [uploadDescription, setUploadDescription] = useState('')
@@ -221,6 +248,25 @@ export default function DashboardPage() {
     )
   }, [content, selectedCategory, selectedMediaType])
 
+  const topVisitorSources = useMemo(
+    () => buildTopCounts(visitorEvents.map((event) => event.source), 'Direct').slice(0, 5),
+    [visitorEvents],
+  )
+
+  const topVisitorCountries = useMemo(
+    () => buildTopCounts(visitorEvents.map((event) => event.country), 'Unknown').slice(0, 5),
+    [visitorEvents],
+  )
+
+  const topVisitorCities = useMemo(
+    () => buildTopCounts(visitorEvents.map((event) => event.city), 'Unknown').slice(0, 5),
+    [visitorEvents],
+  )
+
+  const topVisitorSource = topVisitorSources[0]?.[0] || 'Direct'
+  const topVisitorCountry = topVisitorCountries[0]?.[0] || 'Unknown'
+  const topVisitorCity = topVisitorCities[0]?.[0] || 'Unknown'
+
   const categoriesForSelectedMedia = useMemo(() => {
     return categories.filter((category) => category.slug !== 'video')
   }, [categories])
@@ -247,6 +293,32 @@ export default function DashboardPage() {
       setBusy(false)
     }
   }, [getToken, userId])
+
+  const loadVisitorAnalytics = useCallback(async () => {
+    if (!isAdmin) {
+      setVisitorEvents([])
+      return
+    }
+
+    setVisitorAnalyticsLoading(true)
+
+    try {
+      const clerkToken = await getToken()
+
+      if (!clerkToken) {
+        setStatus('Could not get Clerk token for visitor analytics.')
+        return
+      }
+
+      const events = await getVisitorEvents(clerkToken, 100)
+      setVisitorEvents(events)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not load visitor analytics.'
+      setStatus(message)
+    } finally {
+      setVisitorAnalyticsLoading(false)
+    }
+  }, [getToken, isAdmin])
 
   const handleManageSubscription = useCallback(async () => {
     setStatus(null)
@@ -340,6 +412,15 @@ export default function DashboardPage() {
     const emailAddress = user?.primaryEmailAddress?.emailAddress || null
     void hydrateUserData(userId, emailAddress)
   }, [hydrateUserData, supabaseToken, user?.primaryEmailAddress, userId])
+
+  useEffect(() => {
+    if (!isLoaded || !userId || !profile || !isAdmin) {
+      setVisitorEvents([])
+      return
+    }
+
+    void loadVisitorAnalytics()
+  }, [isAdmin, isLoaded, loadVisitorAnalytics, profile, userId])
 
   useEffect(() => {
     if (!lightboxImages.length) return
@@ -871,8 +952,8 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow">
-        <div className="bg-gradient-to-r from-blue-900/30 to-blue-800/30 border-l-4 border-blue-500 p-4 mb-6 rounded-r-lg shadow-md">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 grow">
+        <div className="bg-linear-to-r from-blue-900/30 to-blue-800/30 border-l-4 border-blue-500 p-4 mb-6 rounded-r-lg shadow-md">
           <p className="text-sm text-blue-100 flex items-center gap-2">
             <svg className="w-5 h-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
               <path
@@ -976,7 +1057,7 @@ export default function DashboardPage() {
                       </button>
                     )}
                     <span className="absolute top-2 right-2 px-3 py-1 bg-black/70 text-white text-xs font-semibold rounded-full backdrop-blur-sm">
-                      {item.categories?.[0]?.name || 'Uncategorized'}
+                      {item.categories?.name || 'Uncategorized'}
                     </span>
                   </div>
 
@@ -1083,6 +1164,119 @@ export default function DashboardPage() {
 
         {isAdmin && (
           <div className="bg-gray-800 border-2 border-gray-700 rounded-2xl p-8 shadow-lg mt-8">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
+              <div>
+                <h2 className="text-2xl font-serif font-bold text-white">Visitor Analytics</h2>
+                <p className="text-sm text-gray-300">
+                  Recent visits with country, city, visit time, and traffic source.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={visitorAnalyticsLoading}
+                onClick={() => void loadVisitorAnalytics()}
+                className="px-4 py-2 rounded-lg bg-gray-700 text-white hover:bg-gray-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {visitorAnalyticsLoading ? 'Refreshing...' : 'Refresh analytics'}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-blue-200">Recent visits</p>
+                <p className="mt-3 text-3xl font-bold text-white">{visitorEvents.length}</p>
+                <p className="mt-2 text-sm text-blue-100/80">Latest 100 homepage visits</p>
+              </div>
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-200">Top country</p>
+                <p className="mt-3 text-2xl font-bold text-white">{topVisitorCountry}</p>
+                <p className="mt-2 text-sm text-emerald-100/80">Most common visitor country</p>
+              </div>
+              <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-200">Top city</p>
+                <p className="mt-3 text-2xl font-bold text-white">{topVisitorCity}</p>
+                <p className="mt-2 text-sm text-amber-100/80">Most common visitor city</p>
+              </div>
+              <div className="rounded-2xl border border-purple-500/20 bg-purple-500/10 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-purple-200">Top source</p>
+                <p className="mt-3 text-2xl font-bold text-white">{topVisitorSource}</p>
+                <p className="mt-2 text-sm text-purple-100/80">Where visitors found the site</p>
+              </div>
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+              <div className="rounded-2xl border border-gray-700 bg-gray-900/50 p-5">
+                <h3 className="text-lg font-semibold text-white">Top traffic sources</h3>
+                <div className="mt-4 space-y-3">
+                  {topVisitorSources.length ? (
+                    topVisitorSources.map(([label, count]) => (
+                      <div key={label} className="flex items-center justify-between rounded-xl bg-gray-800/70 px-4 py-3 text-sm text-gray-200">
+                        <span>{label}</span>
+                        <span className="font-semibold text-white">{count}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-400">No source data yet.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-gray-700 bg-gray-900/50 p-5">
+                <h3 className="text-lg font-semibold text-white">Top locations</h3>
+                <div className="mt-4 space-y-3">
+                  {topVisitorCountries.length ? (
+                    topVisitorCountries.map(([country, count]) => (
+                      <div key={country} className="flex items-center justify-between rounded-xl bg-gray-800/70 px-4 py-3 text-sm text-gray-200">
+                        <span>{country}</span>
+                        <span className="font-semibold text-white">{count}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-400">No location data yet.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 overflow-x-auto rounded-2xl border border-gray-700 bg-gray-900/50">
+              <table className="min-w-full divide-y divide-gray-700 text-sm text-left text-gray-200">
+                <thead className="bg-gray-900/80 text-xs uppercase tracking-wide text-gray-400">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Time</th>
+                    <th className="px-4 py-3 font-medium">Country</th>
+                    <th className="px-4 py-3 font-medium">City</th>
+                    <th className="px-4 py-3 font-medium">Source</th>
+                    <th className="px-4 py-3 font-medium">Referrer</th>
+                    <th className="px-4 py-3 font-medium">Page</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800">
+                  {visitorEvents.length ? (
+                    visitorEvents.map((event) => (
+                      <tr key={event.id} className="align-top">
+                        <td className="px-4 py-3 whitespace-nowrap">{formatVisitTime(event.visited_at)}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">{event.country || 'Unknown'}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">{event.city || 'Unknown'}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">{event.source || 'Direct'}</td>
+                        <td className="px-4 py-3 max-w-xs break-all text-gray-400">{event.referrer_url || 'Direct / none'}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-gray-400">{event.page_path}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-10 text-center text-gray-400">
+                        No visitor analytics have been recorded yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {isAdmin && (
+          <div className="bg-gray-800 border-2 border-gray-700 rounded-2xl p-8 shadow-lg mt-8">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-12 h-12 bg-purple-600 rounded-lg flex items-center justify-center">
                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1170,7 +1364,7 @@ export default function DashboardPage() {
               <button
                 type="submit"
                 disabled={busy}
-                className="w-full py-3 px-6 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-lg"
+                className="w-full py-3 px-6 bg-linear-to-r from-purple-600 to-indigo-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-lg"
               >
                 {busy ? 'Uploading...' : '⬆️ Upload Content'}
               </button>
@@ -1179,8 +1373,8 @@ export default function DashboardPage() {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8 mb-8">
-          <div className="bg-gradient-to-br from-blue-900/40 to-blue-800/30 rounded-xl p-6 shadow-lg border-2 border-blue-500/30 hover:border-blue-400/50 transition-all">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center mb-4 shadow-md">
+          <div className="bg-linear-to-br from-blue-900/40 to-blue-800/30 rounded-xl p-6 shadow-lg border-2 border-blue-500/30 hover:border-blue-400/50 transition-all">
+            <div className="w-12 h-12 bg-linear-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center mb-4 shadow-md">
               <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
@@ -1195,8 +1389,8 @@ export default function DashboardPage() {
               All content is for personal viewing only. Redistribution, sharing, or commercial use of images and videos is strictly prohibited.
             </p>
           </div>
-          <div className="bg-gradient-to-br from-green-900/40 to-green-800/30 rounded-xl p-6 shadow-lg border-2 border-green-500/30 hover:border-green-400/50 transition-all">
-            <div className="w-12 h-12 bg-gradient-to-br from-green-600 to-green-700 rounded-lg flex items-center justify-center mb-4 shadow-md">
+          <div className="bg-linear-to-br from-green-900/40 to-green-800/30 rounded-xl p-6 shadow-lg border-2 border-green-500/30 hover:border-green-400/50 transition-all">
+            <div className="w-12 h-12 bg-linear-to-br from-green-600 to-green-700 rounded-lg flex items-center justify-center mb-4 shadow-md">
               <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
@@ -1211,8 +1405,8 @@ export default function DashboardPage() {
               You must be 18 years or older to access this platform. All content features adult models aged 23+.
             </p>
           </div>
-          <div className="bg-gradient-to-br from-purple-900/40 to-purple-800/30 rounded-xl p-6 shadow-lg border-2 border-purple-500/30 hover:border-purple-400/50 transition-all">
-            <div className="w-12 h-12 bg-gradient-to-br from-purple-600 to-purple-700 rounded-lg flex items-center justify-center mb-4 shadow-md">
+          <div className="bg-linear-to-br from-purple-900/40 to-purple-800/30 rounded-xl p-6 shadow-lg border-2 border-purple-500/30 hover:border-purple-400/50 transition-all">
+            <div className="w-12 h-12 bg-linear-to-br from-purple-600 to-purple-700 rounded-lg flex items-center justify-center mb-4 shadow-md">
               <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"

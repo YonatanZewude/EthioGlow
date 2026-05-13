@@ -28,10 +28,20 @@ export type ContentItem = {
   landing_order: number | null
   created_at: string
   category_id: string
-  categories: Array<{
+  categories: {
     name: string
     slug: string
-  }> | null
+  } | null
   favorites: Array<{ count: number }>
   signedUrl?: string
+}
+
+export type VisitorEvent = {
+  id: string
+  page_path: string
+  source: string | null
+  referrer_url: string | null
+  city: string | null
+  country: string | null
+  visited_at: string
 }

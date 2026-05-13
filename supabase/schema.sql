@@ -59,6 +59,20 @@ create table if not exists public.stripe_customers (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.visitor_events (
+  id uuid primary key default gen_random_uuid(),
+  page_path text not null default '/',
+  source text,
+  referrer_url text,
+  city text,
+  country text,
+  visited_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists visitor_events_visited_at_idx on public.visitor_events (visited_at desc);
+create index if not exists visitor_events_source_idx on public.visitor_events (source);
+
 create or replace function public.request_user_id()
 returns text
 language sql
@@ -93,6 +107,7 @@ alter table public.categories enable row level security;
 alter table public.content_items enable row level security;
 alter table public.favorites enable row level security;
 alter table public.stripe_customers enable row level security;
+alter table public.visitor_events enable row level security;
 
 create policy "profiles self read" on public.profiles
 for select using (public.request_user_id() = id);
@@ -134,6 +149,9 @@ for delete using (public.request_user_id() = user_id);
 
 create policy "stripe customers admin only" on public.stripe_customers
 for all using (public.is_admin(public.request_user_id()));
+
+create policy "visitor events admin only" on public.visitor_events
+for select using (public.is_admin(public.request_user_id()));
 
 insert into public.categories (name, slug)
 values

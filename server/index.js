@@ -7,6 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 
 const app = express()
 const port = process.env.PORT || 8787
+app.set('trust proxy', true)
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
 const supabaseAdmin = createClient(
@@ -16,6 +17,178 @@ const supabaseAdmin = createClient(
 const clerkClient = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY })
 
 const ACTIVE_STATUSES = new Set(['active', 'trialing'])
+
+const normalizeNullableString = (value, maxLength = 255) => {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const trimmed = value.trim()
+
+  if (!trimmed) {
+    return null
+  }
+
+  return trimmed.slice(0, maxLength)
+}
+
+const normalizeIpAddress = (value) => {
+  const normalized = normalizeNullableString(value, 128)
+
+  if (!normalized) {
+    return null
+  }
+
+  return normalized.replace(/^::ffff:/, '')
+}
+
+const getClientIpAddress = (req) => {
+  const forwardedHeader = req.headers['x-forwarded-for']
+  const forwardedValue = Array.isArray(forwardedHeader)
+    ? forwardedHeader[0]
+    : forwardedHeader
+  const forwardedIp = normalizeIpAddress(forwardedValue?.split(',')[0] || '')
+
+  if (forwardedIp) {
+    return forwardedIp
+  }
+
+  return normalizeIpAddress(req.ip || '')
+}
+
+const isPrivateIpAddress = (ipAddress) => {
+  if (!ipAddress) {
+    return true
+  }
+
+  return (
+    ipAddress === '127.0.0.1' ||
+    ipAddress === '::1' ||
+    ipAddress.startsWith('10.') ||
+    ipAddress.startsWith('192.168.') ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(ipAddress) ||
+    ipAddress.startsWith('fc') ||
+    ipAddress.startsWith('fd')
+  )
+}
+
+const getTrafficSourceLabel = (rawSource) => {
+  const source = normalizeNullableString(rawSource, 120)?.toLowerCase()
+
+  if (!source) {
+    return 'Direct'
+  }
+
+  const knownSources = [
+    { label: 'TikTok', patterns: ['tiktok'] },
+    { label: 'Google', patterns: ['google'] },
+    { label: 'YouTube', patterns: ['youtube', 'youtu.be'] },
+    { label: 'Instagram', patterns: ['instagram'] },
+    { label: 'Facebook', patterns: ['facebook', 'fb.com'] },
+    { label: 'X', patterns: ['twitter', 'x.com', 't.co'] },
+    { label: 'Telegram', patterns: ['telegram', 't.me'] },
+    { label: 'Reddit', patterns: ['reddit'] },
+  ]
+
+  for (const sourceEntry of knownSources) {
+    if (sourceEntry.patterns.some((pattern) => source.includes(pattern))) {
+      return sourceEntry.label
+    }
+  }
+
+  return source
+    .split(/[^a-z0-9]+/i)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+const deriveTrafficSource = ({ utmSource, referrerUrl }) => {
+  if (utmSource) {
+    return getTrafficSourceLabel(utmSource)
+  }
+
+  const normalizedReferrer = normalizeNullableString(referrerUrl, 1024)
+
+  if (!normalizedReferrer) {
+    return 'Direct'
+  }
+
+  try {
+    const hostname = new URL(normalizedReferrer).hostname.replace(/^www\./, '')
+    return getTrafficSourceLabel(hostname)
+  } catch {
+    return getTrafficSourceLabel(normalizedReferrer)
+  }
+}
+
+const getHeaderValue = (req, headerName, maxLength = 120) => {
+  const rawValue = req.headers[headerName]
+  const normalizedValue = Array.isArray(rawValue) ? rawValue[0] : rawValue
+  const value = normalizeNullableString(normalizedValue, maxLength)
+
+  if (value === 'XX') {
+    return null
+  }
+
+  return value
+}
+
+const getGeoLocationFromHeaders = (req) => ({
+  city:
+    getHeaderValue(req, 'x-vercel-ip-city') ||
+    getHeaderValue(req, 'x-city') ||
+    getHeaderValue(req, 'cf-ipcity'),
+  country:
+    getHeaderValue(req, 'x-vercel-ip-country') ||
+    getHeaderValue(req, 'x-country-code') ||
+    getHeaderValue(req, 'cf-ipcountry'),
+})
+
+const getGeoLocationFromIpAddress = async (ipAddress) => {
+  if (!ipAddress || isPrivateIpAddress(ipAddress)) {
+    return { city: null, country: null }
+  }
+
+  try {
+    const response = await fetch(`https://ipwho.is/${encodeURIComponent(ipAddress)}`, {
+      signal: AbortSignal.timeout(2500),
+    })
+
+    if (!response.ok) {
+      return { city: null, country: null }
+    }
+
+    const data = await response.json()
+
+    if (!data?.success) {
+      return { city: null, country: null }
+    }
+
+    return {
+      city: normalizeNullableString(data.city, 120),
+      country: normalizeNullableString(data.country, 120),
+    }
+  } catch {
+    return { city: null, country: null }
+  }
+}
+
+const resolveVisitorLocation = async (req) => {
+  const headerLocation = getGeoLocationFromHeaders(req)
+
+  if (headerLocation.city && headerLocation.country) {
+    return headerLocation
+  }
+
+  const ipAddress = getClientIpAddress(req)
+  const ipLocation = await getGeoLocationFromIpAddress(ipAddress)
+
+  return {
+    city: headerLocation.city || ipLocation.city,
+    country: headerLocation.country || ipLocation.country,
+  }
+}
 
 const allowedOrigins = (process.env.CORS_ORIGINS || process.env.APP_URL || '')
   .split(',')
@@ -132,6 +305,19 @@ const getProfileById = async (userId) => {
   }
 
   return data
+}
+
+const getAdminUserFromAuthorization = async (authHeader) => {
+  const user = await getClerkUserFromAuthorization(authHeader)
+  const profile = await getProfileById(user.id)
+
+  if (profile.role !== 'admin') {
+    const error = new Error('Admin access required')
+    error.statusCode = 403
+    throw error
+  }
+
+  return { user, profile }
 }
 
 const getProfileSubscriptionDetails = async (userId) => {
@@ -396,6 +582,64 @@ app.post('/api/auth/resolve-session-conflict', async (req, res) => {
   } catch (err) {
     console.error(err)
     return res.status(500).json({ error: 'Could not resolve active sessions' })
+  }
+})
+
+app.post('/api/analytics/track-visit', async (req, res) => {
+  try {
+    const pagePath = normalizeNullableString(req.body?.pagePath, 300) || '/'
+    const referrerUrl = normalizeNullableString(req.body?.referrer, 1024)
+    const utmSource = normalizeNullableString(req.body?.utmSource, 120)
+    const source = deriveTrafficSource({ utmSource, referrerUrl })
+    const location = await resolveVisitorLocation(req)
+
+    const { error } = await supabaseAdmin.from('visitor_events').insert({
+      page_path: pagePath,
+      source,
+      referrer_url: referrerUrl,
+      city: location.city,
+      country: location.country,
+    })
+
+    if (error) {
+      return res.status(500).json({ error: error.message })
+    }
+
+    return res.status(201).json({ ok: true })
+  } catch (err) {
+    console.error(err)
+    return res.status(500).json({ error: 'Could not track visitor visit' })
+  }
+})
+
+app.get('/api/admin/visitor-events', async (req, res) => {
+  try {
+    await getAdminUserFromAuthorization(req.headers.authorization)
+
+    const rawLimit = Number.parseInt(String(req.query.limit || '100'), 10)
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0
+      ? Math.min(rawLimit, 500)
+      : 100
+
+    const { data, error } = await supabaseAdmin
+      .from('visitor_events')
+      .select('id, page_path, source, referrer_url, city, country, visited_at')
+      .order('visited_at', { ascending: false })
+      .limit(limit)
+
+    if (error) {
+      return res.status(500).json({ error: error.message })
+    }
+
+    return res.status(200).json({ ok: true, events: data || [] })
+  } catch (err) {
+    console.error(err)
+
+    if (err?.statusCode === 403) {
+      return res.status(403).json({ error: err.message })
+    }
+
+    return res.status(500).json({ error: 'Could not load visitor events' })
   }
 })
 

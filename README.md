@@ -15,6 +15,7 @@ Premium content-plattform med medlemskap.
   - is_premium
 - Favoriter per anvandare
 - Senast uppladdat-lista
+- Besoksanalys for admin: stad, land, tid och trafikkalla
 - Kategori/filter: `Nytt`, `Populart`, `Premium`, `Video`, `Bild`
 - Tydliga policyregler for copyright, alder, integritet och forbjudet innehall
 
@@ -59,6 +60,7 @@ Detta skapar:
 - `content_items`
 - `favorites`
 - `stripe_customers`
+- `visitor_events`
 - RLS policies
 - Storage bucket: `premium-content` (private)
 
