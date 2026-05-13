@@ -3,6 +3,9 @@ import { SignedIn, SignedOut } from '@clerk/clerk-react'
 import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
+import AdminAnalyticsPage from './pages/AdminAnalyticsPage'
+import AdminPage from './pages/AdminPage'
+import AdminUploadPage from './pages/AdminUploadPage'
 import DashboardPage from './pages/DashboardPage'
 import CheckoutCancelledPage from './pages/CheckoutCancelledPage'
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage'
@@ -64,6 +67,45 @@ function App() {
             <>
               <SignedIn>
                 <DashboardPage />
+              </SignedIn>
+              <SignedOut>
+                <Navigate to="/login" replace />
+              </SignedOut>
+            </>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <>
+              <SignedIn>
+                <AdminPage />
+              </SignedIn>
+              <SignedOut>
+                <Navigate to="/login" replace />
+              </SignedOut>
+            </>
+          }
+        />
+        <Route
+          path="/admin/analytics"
+          element={
+            <>
+              <SignedIn>
+                <AdminAnalyticsPage />
+              </SignedIn>
+              <SignedOut>
+                <Navigate to="/login" replace />
+              </SignedOut>
+            </>
+          }
+        />
+        <Route
+          path="/admin/upload"
+          element={
+            <>
+              <SignedIn>
+                <AdminUploadPage />
               </SignedIn>
               <SignedOut>
                 <Navigate to="/login" replace />
