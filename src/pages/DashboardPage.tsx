@@ -1047,12 +1047,14 @@ export default function DashboardPage() {
                 >
                   <div className="relative">
                     {selectedMediaType === 'video' ? (
-                      <video
-                        src={item.signedUrl}
-                        controls
-                        preload="metadata"
-                        className="w-full h-64 object-cover"
-                      />
+                      <div className="flex h-64 items-center justify-center bg-black">
+                        <video
+                          src={item.signedUrl}
+                          controls
+                          preload="metadata"
+                          className="h-full w-full object-contain"
+                        />
+                      </div>
                     ) : (
                       <button
                         type="button"
