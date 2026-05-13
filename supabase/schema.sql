@@ -66,9 +66,21 @@ create table if not exists public.visitor_events (
   referrer_url text,
   city text,
   country text,
+  device_type text,
+  device_os text,
+  browser text,
   visited_at timestamptz not null default now(),
   created_at timestamptz not null default now()
 );
+
+alter table public.visitor_events
+add column if not exists device_type text;
+
+alter table public.visitor_events
+add column if not exists device_os text;
+
+alter table public.visitor_events
+add column if not exists browser text;
 
 create index if not exists visitor_events_visited_at_idx on public.visitor_events (visited_at desc);
 create index if not exists visitor_events_source_idx on public.visitor_events (source);

@@ -190,6 +190,94 @@ const resolveVisitorLocation = async (req) => {
   }
 }
 
+const getDeviceContextFromUserAgent = (req) => {
+  const userAgent = normalizeNullableString(getHeaderValue(req, 'user-agent', 1024), 1024)
+
+  if (!userAgent) {
+    return {
+      deviceType: 'Unknown',
+      deviceOs: 'Unknown',
+      browser: 'Unknown',
+    }
+  }
+
+  const normalizedUserAgent = userAgent.toLowerCase()
+
+  const deviceType = (() => {
+    if (/ipad|tablet|playbook|silk/.test(normalizedUserAgent)) {
+      return 'Tablet'
+    }
+
+    if (/mobile|iphone|ipod|android/.test(normalizedUserAgent)) {
+      return 'Mobile'
+    }
+
+    return 'Desktop'
+  })()
+
+  const deviceOs = (() => {
+    if (/iphone|ipad|ipod/.test(normalizedUserAgent)) {
+      return 'iOS'
+    }
+
+    if (/android/.test(normalizedUserAgent)) {
+      return 'Android'
+    }
+
+    if (/windows nt/.test(normalizedUserAgent)) {
+      return 'Windows'
+    }
+
+    if (/mac os x|macintosh/.test(normalizedUserAgent)) {
+      return 'macOS'
+    }
+
+    if (/linux/.test(normalizedUserAgent)) {
+      return 'Linux'
+    }
+
+    return 'Unknown'
+  })()
+
+  const browser = (() => {
+    if (/tiktok/.test(normalizedUserAgent)) {
+      return 'TikTok Browser'
+    }
+
+    if (/instagram/.test(normalizedUserAgent)) {
+      return 'Instagram Browser'
+    }
+
+    if (/fbav|fban|facebook/.test(normalizedUserAgent)) {
+      return 'Facebook Browser'
+    }
+
+    if (/edg\//.test(normalizedUserAgent)) {
+      return 'Edge'
+    }
+
+    if (/opr\//.test(normalizedUserAgent) || /opera/.test(normalizedUserAgent)) {
+      return 'Opera'
+    }
+
+    if (/crios\//.test(normalizedUserAgent) || /chrome\//.test(normalizedUserAgent)) {
+      return 'Chrome'
+    }
+
+    if (/firefox\//.test(normalizedUserAgent)) {
+      return 'Firefox'
+    }
+
+    if (/safari\//.test(normalizedUserAgent) && !/chrome\//.test(normalizedUserAgent) && !/crios\//.test(normalizedUserAgent)) {
+      return 'Safari'
+    }
+
+    return 'Unknown'
+  })()
+
+  return { deviceType, deviceOs, browser }
+}
+
 const allowedOrigins = (process.env.CORS_ORIGINS || process.env.APP_URL || '')
   .split(',')
   .map((origin) => origin.trim())
@@ -592,6 +680,7 @@ app.post('/api/analytics/track-visit', async (req, res) => {
     const utmSource = normalizeNullableString(req.body?.utmSource, 120)
     const source = deriveTrafficSource({ utmSource, referrerUrl })
     const location = await resolveVisitorLocation(req)
+    const deviceContext = getDeviceContextFromUserAgent(req)
 
     const { error } = await supabaseAdmin.from('visitor_events').insert({
       page_path: pagePath,
@@ -599,6 +688,9 @@ app.post('/api/analytics/track-visit', async (req, res) => {
       referrer_url: referrerUrl,
       city: location.city,
       country: location.country,
+      device_type: deviceContext.deviceType,
+      device_os: deviceContext.deviceOs,
+      browser: deviceContext.browser,
     })
 
     if (error) {
@@ -623,7 +715,7 @@ app.get('/api/admin/visitor-events', async (req, res) => {
 
     const { data, error } = await supabaseAdmin
       .from('visitor_events')
-      .select('id, page_path, source, referrer_url, city, country, visited_at')
+      .select('id, page_path, source, referrer_url, city, country, device_type, device_os, browser, visited_at')
       .order('visited_at', { ascending: false })
       .limit(limit)
 

@@ -263,9 +263,20 @@ export default function DashboardPage() {
     [visitorEvents],
   )
 
+  const topVisitorDevices = useMemo(
+    () => buildTopCounts(
+      visitorEvents.map(
+        (event) => `${event.device_type || 'Unknown'} | ${event.device_os || 'Unknown'} | ${event.browser || 'Unknown'}`,
+      ),
+      'Unknown | Unknown | Unknown',
+    ).slice(0, 5),
+    [visitorEvents],
+  )
+
   const topVisitorSource = topVisitorSources[0]?.[0] || 'Direct'
   const topVisitorCountry = topVisitorCountries[0]?.[0] || 'Unknown'
   const topVisitorCity = topVisitorCities[0]?.[0] || 'Unknown'
+  const topVisitorDevice = topVisitorDevices[0]?.[0] || 'Unknown | Unknown | Unknown'
 
   const categoriesForSelectedMedia = useMemo(() => {
     return categories.filter((category) => category.slug !== 'video')
@@ -1168,7 +1179,7 @@ export default function DashboardPage() {
               <div>
                 <h2 className="text-2xl font-serif font-bold text-white">Visitor Analytics</h2>
                 <p className="text-sm text-gray-300">
-                  Recent visits with country, city, visit time, and traffic source.
+                  Recent visits with country, city, device, visit time, and traffic source.
                 </p>
               </div>
               <button
@@ -1181,7 +1192,7 @@ export default function DashboardPage() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
               <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-blue-200">Recent visits</p>
                 <p className="mt-3 text-3xl font-bold text-white">{visitorEvents.length}</p>
@@ -1202,9 +1213,14 @@ export default function DashboardPage() {
                 <p className="mt-3 text-2xl font-bold text-white">{topVisitorSource}</p>
                 <p className="mt-2 text-sm text-purple-100/80">Where visitors found the site</p>
               </div>
+              <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-cyan-200">Top device</p>
+                <p className="mt-3 text-xl font-bold text-white">{topVisitorDevice}</p>
+                <p className="mt-2 text-sm text-cyan-100/80">Device type, OS, and browser</p>
+              </div>
             </div>
 
-            <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+            <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
               <div className="rounded-2xl border border-gray-700 bg-gray-900/50 p-5">
                 <h3 className="text-lg font-semibold text-white">Top traffic sources</h3>
                 <div className="mt-4 space-y-3">
@@ -1236,6 +1252,22 @@ export default function DashboardPage() {
                   )}
                 </div>
               </div>
+
+              <div className="rounded-2xl border border-gray-700 bg-gray-900/50 p-5">
+                <h3 className="text-lg font-semibold text-white">Top devices</h3>
+                <div className="mt-4 space-y-3">
+                  {topVisitorDevices.length ? (
+                    topVisitorDevices.map(([device, count]) => (
+                      <div key={device} className="flex items-center justify-between rounded-xl bg-gray-800/70 px-4 py-3 text-sm text-gray-200">
+                        <span>{device}</span>
+                        <span className="font-semibold text-white">{count}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-400">No device data yet.</p>
+                  )}
+                </div>
+              </div>
             </div>
 
             <div className="mt-6 overflow-x-auto rounded-2xl border border-gray-700 bg-gray-900/50">
@@ -1245,6 +1277,7 @@ export default function DashboardPage() {
                     <th className="px-4 py-3 font-medium">Time</th>
                     <th className="px-4 py-3 font-medium">Country</th>
                     <th className="px-4 py-3 font-medium">City</th>
+                    <th className="px-4 py-3 font-medium">Device</th>
                     <th className="px-4 py-3 font-medium">Source</th>
                     <th className="px-4 py-3 font-medium">Referrer</th>
                     <th className="px-4 py-3 font-medium">Page</th>
@@ -1257,6 +1290,7 @@ export default function DashboardPage() {
                         <td className="px-4 py-3 whitespace-nowrap">{formatVisitTime(event.visited_at)}</td>
                         <td className="px-4 py-3 whitespace-nowrap">{event.country || 'Unknown'}</td>
                         <td className="px-4 py-3 whitespace-nowrap">{event.city || 'Unknown'}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">{`${event.device_type || 'Unknown'} | ${event.device_os || 'Unknown'} | ${event.browser || 'Unknown'}`}</td>
                         <td className="px-4 py-3 whitespace-nowrap">{event.source || 'Direct'}</td>
                         <td className="px-4 py-3 max-w-xs break-all text-gray-400">{event.referrer_url || 'Direct / none'}</td>
                         <td className="px-4 py-3 whitespace-nowrap text-gray-400">{event.page_path}</td>
@@ -1264,7 +1298,7 @@ export default function DashboardPage() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={6} className="px-4 py-10 text-center text-gray-400">
+                      <td colSpan={7} className="px-4 py-10 text-center text-gray-400">
                         No visitor analytics have been recorded yet.
                       </td>
                     </tr>

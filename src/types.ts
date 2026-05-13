@@ -43,5 +43,8 @@ export type VisitorEvent = {
   referrer_url: string | null
   city: string | null
   country: string | null
+  device_type: string | null
+  device_os: string | null
+  browser: string | null
   visited_at: string
 }
